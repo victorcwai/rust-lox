@@ -1,3 +1,4 @@
+use crate::compiler::compile;
 use crate::{
     chunk::{Chunk, OpCode},
     debug::disassemble_instruction,
@@ -13,9 +14,9 @@ pub struct VM {
 }
 
 pub enum InterpretResult {
-    InterpretOk,
-    InterpretCompileError,
-    InterpretRuntimeError,
+    Ok,
+    CompileError,
+    RuntimeError,
 }
 
 impl VM {
@@ -27,10 +28,9 @@ impl VM {
         }
     }
 
-    pub fn interpret(&mut self, chunk: Chunk) -> InterpretResult {
-        self.chunk = chunk;
-        self.ip = 0;
-        return self.run();
+    pub fn interpret(&mut self, source: &str) -> InterpretResult {
+        compile(source);
+        InterpretResult::Ok
     }
 
     // We run every single instruction here, so this is the most performance critical part of the VM.
@@ -39,35 +39,35 @@ impl VM {
         loop {
             let op = &self.chunk.code[self.ip];
             match op {
-                OpCode::OpConstant(cons) => {
+                OpCode::Constant(cons) => {
                     let constant = &self.chunk.constants.values[*cons as usize];
                     print_value(constant);
                     self.stack.push(*constant);
-                    print!("\n");
+                    println!();
                 }
-                OpCode::OpAdd => {
+                OpCode::Add => {
                     self.binary_op(|x, y| x + y);
                 }
-                OpCode::OpSubtract => {
+                OpCode::Subtract => {
                     self.binary_op(|x, y| x - y);
                 }
-                OpCode::OpMultiply => {
+                OpCode::Multiply => {
                     self.binary_op(|x, y| x * y);
                 }
-                OpCode::OpDivide => {
+                OpCode::Divide => {
                     self.binary_op(|x, y| x / y);
                 }
-                OpCode::OpNegate => {
+                OpCode::Negate => {
                     let neg_val = -self.pop();
                     self.stack.push(neg_val);
                     // if let Some(last) = self.stack.last_mut() {
                     //     *last = -*last
                     // }
                 }
-                OpCode::OpReturn => {
+                OpCode::Return => {
                     print_value(&self.pop());
-                    print!("\n");
-                    return InterpretResult::InterpretOk;
+                    println!();
+                    return InterpretResult::Ok;
                 }
             }
             self.ip += 1;
@@ -89,10 +89,10 @@ impl VM {
         print!("          ");
         for slot in &self.stack {
             print!("[ ");
-            print_value(&slot);
+            print_value(slot);
             print!(" ]");
         }
-        print!("\n");
+        println!();
         disassemble_instruction(&self.chunk, self.ip);
     }
 }

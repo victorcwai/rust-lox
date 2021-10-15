@@ -2,13 +2,13 @@ use crate::value::{Value, ValueArray};
 
 #[derive(Debug)]
 pub enum OpCode {
-    OpConstant(u8), // u8 = constant_idx
-    OpAdd,
-    OpSubtract,
-    OpMultiply,
-    OpDivide,
-    OpNegate,
-    OpReturn,
+    Constant(u8), // u8 = constant_idx
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+    Negate,
+    Return,
 }
 
 pub struct Chunk {
@@ -37,6 +37,6 @@ impl Chunk {
 
     pub fn add_constant(&mut self, v: Value) -> usize {
         self.constants.write(v);
-        return self.constants.values.len() - 1;
+        self.constants.values.len() - 1
     }
 }

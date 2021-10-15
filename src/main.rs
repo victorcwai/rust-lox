@@ -1,42 +1,72 @@
-use std::convert::TryInto;
+use std::process::exit;
 use std::time::Instant;
 
-use crate::debug::disassemble_chunk;
-use chunk::{Chunk, OpCode};
-use vm::VM;
+use vm::{InterpretResult, VM};
 
 mod chunk;
+mod compiler;
 mod debug;
+mod scanner;
 mod value;
 mod vm;
+use std::{env, fs, io};
 
 fn main() {
     let now = Instant::now();
 
     let mut vm = VM::new();
-    let mut c = Chunk::new();
+    let mut argv = env::args();
+    match argv.len() {
+        1 => {
+            repl(&mut vm);
+        }
+        2 => {
+            run_file(&mut vm, &argv.nth(1).expect("Could not parse argv"));
+        }
+        _ => {
+            eprintln!("Usage: clox [path]");
+            exit(64);
+        }
+    }
 
-    // add the constant value itself to the chunk’s constant pool
-    let constant = c.add_constant(1.2);
-    c.write(OpCode::OpConstant(constant.try_into().unwrap()), 123);
-
-    let constant = c.add_constant(3.4);
-    c.write(OpCode::OpConstant(constant.try_into().unwrap()), 123);
-
-    c.write(OpCode::OpAdd, 123);
-
-    let constant = c.add_constant(5.6);
-    c.write(OpCode::OpConstant(constant.try_into().unwrap()), 123);
-
-    c.write(OpCode::OpDivide, 123);
-    c.write(OpCode::OpNegate, 123);
-    c.write(OpCode::OpReturn, 123);
-
-    disassemble_chunk(&c, "test chunk");
-
-    vm.interpret(c);
-    // vm.debug_trace_execution();
-    // freeVm();
     let elapsed = now.elapsed();
     println!("Elapsed: {:.2?}", elapsed);
+}
+
+fn repl(vm: &mut VM) {
+    // char line[1024];
+    let mut buffer = String::new();
+    let stdin = io::stdin();
+
+    loop {
+        print!("> ");
+
+        // if (!fgets(line, sizeof(line), stdin)) {
+        //   println!();
+        //   break;
+        // }
+        // interpret(line);
+
+        match stdin.read_line(&mut buffer) {
+            Ok(0) | Err(_) => {
+                println!();
+                break;
+            }
+            Ok(_) => {
+                vm.interpret(&buffer);
+            }
+        }
+    }
+}
+
+fn run_file(vm: &mut VM, path: &str) {
+    let source = fs::read_to_string(path).expect("Could not open file");
+    let result = vm.interpret(&source);
+    // free(source);
+
+    match result {
+        InterpretResult::CompileError => exit(65),
+        InterpretResult::RuntimeError => exit(70),
+        InterpretResult::Ok => exit(0),
+    }
 }

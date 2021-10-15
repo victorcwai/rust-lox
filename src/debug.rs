@@ -4,7 +4,7 @@ use crate::{
 };
 
 pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
-    print!("== {} ==\n", name);
+    println!("== {} ==", name);
     let mut offset = 0;
     while offset < chunk.code.len() {
         offset = disassemble_instruction(chunk, offset);
@@ -21,30 +21,28 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
 
     let instruction = &chunk.code[offset];
     match instruction {
-        OpCode::OpConstant(idx) => {
-            return constant_instruction("OP_CONSTANT", chunk, offset, (*idx).into())
-        }
-        OpCode::OpAdd => return simple_instruction("OP_ADD", offset),
-        OpCode::OpSubtract => return simple_instruction("OP_SUBTRACT", offset),
-        OpCode::OpMultiply => return simple_instruction("OP_MULTIPLY", offset),
-        OpCode::OpDivide => return simple_instruction("OP_DIVIDE", offset),
-        OpCode::OpNegate => return simple_instruction("OP_NEGATE", offset),
-        OpCode::OpReturn => return simple_instruction("OP_RETURN", offset),
-        _ => {
-            println!("Unknown opcode {:?}\n", instruction);
-            return offset + 1;
-        }
+        OpCode::Constant(idx) => constant_instruction("OP_CONSTANT", chunk, offset, (*idx).into()),
+        OpCode::Add => simple_instruction("OP_ADD", offset),
+        OpCode::Subtract => simple_instruction("OP_SUBTRACT", offset),
+        OpCode::Multiply => simple_instruction("OP_MULTIPLY", offset),
+        OpCode::Divide => simple_instruction("OP_DIVIDE", offset),
+        OpCode::Negate => simple_instruction("OP_NEGATE", offset),
+        OpCode::Return => simple_instruction("OP_RETURN", offset),
+        // _ => {
+        //     println!("Unknown opcode {:?}\n", instruction);
+        //     offset + 1
+        // }
     }
 }
 
 fn simple_instruction(name: &str, offset: usize) -> usize {
-    print!("{}\n", name);
-    return offset + 1;
+    println!("{}", name);
+    offset + 1
 }
 
 fn constant_instruction(name: &str, chunk: &Chunk, offset: usize, constant_idx: usize) -> usize {
     print!("{} {:?} '", name, constant_idx);
     print_value(&chunk.constants.values[constant_idx]);
-    print!("'\n");
-    return offset + 1;
+    println!("'");
+    offset + 1
 }
