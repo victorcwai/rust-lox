@@ -1,8 +1,8 @@
-A compiler written in Rust for the Lox programming language. Implementation of clox (bytecode) in [Robert Nystrom's *Crafting Interpreters* book](https://craftinginterpreters.com/).
+A compiler written in Rust for the Lox programming language. 
+
+Implementation of clox (bytecode) in [Robert Nystrom's *Crafting Interpreters* book](https://craftinginterpreters.com/).
 
 I am writing it while learning Rust, so it is definitely not perfect/idiomatic.
-
-Notes are mostly copied from the https://craftinginterpreters.com/ book.
 
 Run by `cargo run`. Test with `cargo test`.
 
