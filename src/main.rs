@@ -40,13 +40,6 @@ fn repl(vm: &mut VM) {
 
     loop {
         print!("> ");
-
-        // if (!fgets(line, sizeof(line), stdin)) {
-        //   println!();
-        //   break;
-        // }
-        // interpret(line);
-
         match stdin.read_line(&mut buffer) {
             Ok(0) | Err(_) => {
                 println!();

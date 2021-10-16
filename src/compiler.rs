@@ -11,7 +11,7 @@ pub fn compile(source: &str) {
         } else {
             print!("   | ");
         }
-        println!("'{}'", token.lexeme);
+        println!("'{}' {:?}", token.lexeme, token.token_type);
 
         if let TokenType::Eof = token.token_type {
             break;
