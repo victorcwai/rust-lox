@@ -1,4 +1,4 @@
-use crate::compiler::compile;
+use crate::compiler::Parser;
 use crate::{
     chunk::{Chunk, OpCode},
     debug::disassemble_instruction,
@@ -29,8 +29,16 @@ impl VM {
     }
 
     pub fn interpret(&mut self, source: &str) -> InterpretResult {
-        compile(source);
-        InterpretResult::Ok
+        let mut parser = Parser::new(source);
+
+        if !parser.compile() {
+            return InterpretResult::CompileError;
+        }
+
+        self.chunk = parser.chunk;
+        self.ip = 0; // or self.chunk.code?
+
+        self.run()
     }
 
     // We run every single instruction here, so this is the most performance critical part of the VM.

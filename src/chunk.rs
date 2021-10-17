@@ -18,7 +18,7 @@ pub struct Chunk {
     // https://github.com/rust-lang/rust/blob/68dfa07e3bbbfe9100a9b1047c274717bdf452a1/library/alloc/src/raw_vec.rs#L422
     pub code: Vec<OpCode>,
     pub constants: ValueArray,
-    pub lines: Vec<u32>,
+    pub lines: Vec<usize>,
 }
 
 impl Chunk {
@@ -30,7 +30,7 @@ impl Chunk {
         }
     }
 
-    pub fn write(&mut self, byte: OpCode, line: u32) {
+    pub fn write(&mut self, byte: OpCode, line: usize) {
         self.code.push(byte);
         self.lines.push(line);
     }

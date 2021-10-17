@@ -4,7 +4,7 @@ pub struct Scanner<'src> {
     src: &'src str,
     line: usize,
 }
-impl Scanner<'_> {
+impl<'src> Scanner<'src> {
     pub fn new(source: &str) -> Scanner {
         Scanner {
             start: 0,
@@ -14,7 +14,7 @@ impl Scanner<'_> {
         }
     }
 
-    pub fn scan_token(&mut self) -> Token {
+    pub fn scan_token(&mut self) -> Token<'src> {
         self.skip_whitespace();
         self.start = self.current;
 
@@ -84,14 +84,14 @@ impl Scanner<'_> {
 
     fn check_next(&mut self, expected: u8) -> bool {
         if self.is_at_end() || self.src.as_bytes()[self.current] != expected {
-            return false;
+            false
         } else {
             self.current += 1;
             true
         }
     }
 
-    fn make_token(&self, token_type: TokenType) -> Token {
+    fn make_token(&self, token_type: TokenType) -> Token<'src> {
         Token {
             token_type,
             // start: self.start,
@@ -101,7 +101,7 @@ impl Scanner<'_> {
         }
     }
 
-    fn error_token(&self, msg: &'static str) -> Token {
+    fn error_token(&self, msg: &'static str) -> Token<'src> {
         // TODO: why need static lifetime?
         Token {
             token_type: TokenType::Error,
@@ -187,14 +187,14 @@ impl Scanner<'_> {
         }
     }
 
-    fn identifier(&mut self) -> Token {
+    fn identifier(&mut self) -> Token<'src> {
         while is_alpha(self.peek()) || is_digit(self.peek()) {
             self.advance();
         }
         self.make_token(self.identifier_type())
     }
 
-    fn number(&mut self) -> Token {
+    fn number(&mut self) -> Token<'src> {
         while is_digit(self.peek()) {
             self.advance();
         }
@@ -209,10 +209,10 @@ impl Scanner<'_> {
             }
         }
 
-        return self.make_token(TokenType::Number);
+        self.make_token(TokenType::Number)
     }
 
-    fn string(&mut self) -> Token {
+    fn string(&mut self) -> Token<'src> {
         while self.peek() != b'"' && !self.is_at_end() {
             if self.peek() == b'\n' {
                 self.line += 1
@@ -226,10 +226,11 @@ impl Scanner<'_> {
 
         // The closing quote.
         self.advance();
-        return self.make_token(TokenType::String);
+        self.make_token(TokenType::String)
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Token<'src> {
     pub token_type: TokenType,
     // start: usize,
@@ -238,7 +239,17 @@ pub struct Token<'src> {
     pub lexeme: &'src str,
 }
 
-#[derive(Debug)]
+impl<'src> Token<'src> {
+    pub fn new(token_type: TokenType, line: usize, lexeme: &'src str) -> Token<'src> {
+        Token {
+            token_type,
+            line,
+            lexeme,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum TokenType {
     LeftParen,
     RightParen,

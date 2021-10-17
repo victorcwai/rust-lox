@@ -49,6 +49,7 @@ fn repl(vm: &mut VM) {
                 vm.interpret(&buffer);
             }
         }
+        buffer.clear() // parse line one-by-one separately
     }
 }
 
