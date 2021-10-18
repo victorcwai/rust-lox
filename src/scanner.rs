@@ -173,7 +173,7 @@ impl<'src> Scanner<'src> {
             b'p' => self.check_keyword(1, 4, "rint", TokenType::Print),
             b'r' => self.check_keyword(1, 5, "eturn", TokenType::Return),
             b's' => self.check_keyword(1, 4, "uper", TokenType::Super),
-            b'f' if self.current - self.start > 1 => {
+            b't' if self.current - self.start > 1 => {
                 // lexeme is more than 2 char
                 match self.src.as_bytes()[self.start + 1] {
                     b'h' => self.check_keyword(2, 2, "is", TokenType::This),
