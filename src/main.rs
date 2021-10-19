@@ -59,8 +59,9 @@ fn run_file(vm: &mut VM, path: &str) {
     // free(source);
 
     match result {
-        InterpretResult::CompileError => exit(65),
-        InterpretResult::RuntimeError => exit(70),
-        InterpretResult::Ok => exit(0),
+        Ok(_) => exit(0),
+        Err(InterpretResult::CompileError) => exit(65),
+        Err(InterpretResult::RuntimeError) => exit(70),
+        Err(InterpretResult::Ok) => exit(0), // should not happen
     }
 }

@@ -11,3 +11,4 @@ Run by `cargo run`. Test with `cargo test`.
   - Different offset calculation
 - Use `usize` index instead of pointer+dereference to access element in array.
   - Though pointer+dereference should be faster?
+- Tagged union replaced by Enum(T)

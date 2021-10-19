@@ -3,10 +3,17 @@ use crate::value::{Value, ValueArray};
 #[derive(Debug)]
 pub enum OpCode {
     Constant(u8), // u8 = constant_idx
+    Nil,
+    True,
+    False,
+    Equal,
+    Greater,
+    Less,
     Add,
     Subtract,
     Multiply,
     Divide,
+    Not,
     Negate,
     Return,
 }

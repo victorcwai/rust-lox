@@ -119,11 +119,11 @@ impl<'src> Parser<'src> {
         );
         rule_map.insert(
             TokenType::Bang,
-            ParseRule::new(None, None, Precedence::None),
+            ParseRule::new(Some(Parser::unary), None, Precedence::None),
         );
         rule_map.insert(
             TokenType::BangEqual,
-            ParseRule::new(None, None, Precedence::None),
+            ParseRule::new(None, Some(Parser::binary), Precedence::Equality),
         );
         rule_map.insert(
             TokenType::Equal,
@@ -131,23 +131,23 @@ impl<'src> Parser<'src> {
         );
         rule_map.insert(
             TokenType::EqualEqual,
-            ParseRule::new(None, None, Precedence::None),
+            ParseRule::new(None, Some(Parser::binary), Precedence::Equality),
         );
         rule_map.insert(
             TokenType::Greater,
-            ParseRule::new(None, None, Precedence::None),
+            ParseRule::new(None, Some(Parser::binary), Precedence::Comparison),
         );
         rule_map.insert(
             TokenType::GreaterEqual,
-            ParseRule::new(None, None, Precedence::None),
+            ParseRule::new(None, Some(Parser::binary), Precedence::Comparison),
         );
         rule_map.insert(
             TokenType::Less,
-            ParseRule::new(None, None, Precedence::None),
+            ParseRule::new(None, Some(Parser::binary), Precedence::Comparison),
         );
         rule_map.insert(
             TokenType::LessEqual,
-            ParseRule::new(None, None, Precedence::None),
+            ParseRule::new(None, Some(Parser::binary), Precedence::Comparison),
         );
         rule_map.insert(
             TokenType::Identifier,
@@ -172,12 +172,15 @@ impl<'src> Parser<'src> {
         );
         rule_map.insert(
             TokenType::False,
-            ParseRule::new(None, None, Precedence::None),
+            ParseRule::new(Some(Parser::literal), None, Precedence::None),
         );
         rule_map.insert(TokenType::For, ParseRule::new(None, None, Precedence::None));
         rule_map.insert(TokenType::Fun, ParseRule::new(None, None, Precedence::None));
         rule_map.insert(TokenType::If, ParseRule::new(None, None, Precedence::None));
-        rule_map.insert(TokenType::Nil, ParseRule::new(None, None, Precedence::None));
+        rule_map.insert(
+            TokenType::Nil,
+            ParseRule::new(Some(Parser::literal), None, Precedence::None),
+        );
         rule_map.insert(TokenType::Or, ParseRule::new(None, None, Precedence::None));
         rule_map.insert(
             TokenType::Print,
@@ -197,7 +200,7 @@ impl<'src> Parser<'src> {
         );
         rule_map.insert(
             TokenType::True,
-            ParseRule::new(None, None, Precedence::None),
+            ParseRule::new(Some(Parser::literal), None, Precedence::None),
         );
         rule_map.insert(TokenType::Var, ParseRule::new(None, None, Precedence::None));
         rule_map.insert(
@@ -257,6 +260,11 @@ impl<'src> Parser<'src> {
         self.chunk.write(byte, self.previous.line);
     }
 
+    fn emit_bytes(&mut self, byte1: OpCode, byte2: OpCode) {
+        self.chunk.write(byte1, self.previous.line);
+        self.chunk.write(byte2, self.previous.line);
+    }
+
     fn emit_return(&mut self) {
         self.emit_byte(OpCode::Return);
     }
@@ -272,7 +280,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn emit_constant(&mut self, val: f64) {
+    fn emit_constant(&mut self, val: Value) {
         let constant_idx = self.make_constant(val);
         self.emit_byte(OpCode::Constant(constant_idx));
     }
@@ -290,10 +298,25 @@ impl<'src> Parser<'src> {
         self.parse_precedence(self.get_rule(operator_type).precedence.next());
 
         match operator_type {
+            TokenType::BangEqual => self.emit_bytes(OpCode::Equal, OpCode::Not),
+            TokenType::EqualEqual => self.emit_byte(OpCode::Equal),
+            TokenType::Greater => self.emit_byte(OpCode::Greater),
+            TokenType::GreaterEqual => self.emit_bytes(OpCode::Greater, OpCode::Not),
+            TokenType::Less => self.emit_byte(OpCode::Less),
+            TokenType::LessEqual => self.emit_bytes(OpCode::Less, OpCode::Not),
             TokenType::Plus => self.emit_byte(OpCode::Add),
             TokenType::Minus => self.emit_byte(OpCode::Subtract),
             TokenType::Star => self.emit_byte(OpCode::Multiply),
             TokenType::Slash => self.emit_byte(OpCode::Divide),
+            _ => {} // Unreachable.
+        }
+    }
+
+    fn literal(&mut self) {
+        match self.previous.token_type {
+            TokenType::False => self.emit_byte(OpCode::False),
+            TokenType::Nil => self.emit_byte(OpCode::Nil),
+            TokenType::True => self.emit_byte(OpCode::True),
             _ => {} // Unreachable.
         }
     }
@@ -305,12 +328,12 @@ impl<'src> Parser<'src> {
     }
 
     fn number(&mut self) {
-        self.emit_constant(
+        self.emit_constant(Value::Number(
             self.previous
                 .lexeme
                 .parse()
                 .expect("Cannot convert str to f64"),
-        );
+        ));
     }
 
     fn unary(&mut self) {
@@ -322,6 +345,7 @@ impl<'src> Parser<'src> {
         // Emit the operator instruction.
         match operator_type {
             // operator_type is the previous token, e.g. "-" in "-50"
+            TokenType::Bang => self.emit_byte(OpCode::Not),
             TokenType::Minus => self.emit_byte(OpCode::Negate),
             _ => {} // Unreachable.
         }
