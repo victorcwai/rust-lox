@@ -44,6 +44,9 @@ impl VM {
     // We run every single instruction here, so this is the most performance critical part of the VM.
     // TODO: look up “direct threaded code”, “jump table”, and “computed goto” for optimization techniques
     fn run(&mut self) -> Result<(), InterpretResult> {
+        // wrap in Result, so that we can use the question mark operator to:
+        // 1. *Return* InterpretResult if error
+        // 2. Unpacks the Result ((), i.e. do nothing) if no error
         loop {
             let op = &self.chunk.code[self.ip];
             match op {
@@ -62,22 +65,22 @@ impl VM {
                     self.stack.push(Value::Bool(values_equal(a, b)));
                 }
                 OpCode::Greater => {
-                    self.binary_op_bool(|x, y| x > y)?;
+                    self.binary_op(|x, y| x > y, Value::Bool)?;
                 }
                 OpCode::Less => {
-                    self.binary_op_bool(|x, y| x < y)?;
+                    self.binary_op(|x, y| x < y, Value::Bool)?;
                 }
                 OpCode::Add => {
-                    self.binary_op(|x, y| x + y)?;
+                    self.binary_op(|x, y| x + y, Value::Number)?;
                 }
                 OpCode::Subtract => {
-                    self.binary_op(|x, y| x - y)?;
+                    self.binary_op(|x, y| x - y, Value::Number)?;
                 }
                 OpCode::Multiply => {
-                    self.binary_op(|x, y| x * y)?;
+                    self.binary_op(|x, y| x * y, Value::Number)?;
                 }
                 OpCode::Divide => {
-                    self.binary_op(|x, y| x / y)?;
+                    self.binary_op(|x, y| x / y, Value::Number)?;
                 }
                 OpCode::Not => {
                     let val = self.pop();
@@ -122,14 +125,11 @@ impl VM {
         }
     }
 
-    // wrap in Result, so that we can use the question mark operator to:
-    // 1. *Return* InterpretResult if error
-    // 2. Unpacks the Result ((), i.e. do nothing) if no error
-    fn binary_op(&mut self, f: fn(f64, f64) -> f64) -> Result<(), InterpretResult> {
+    fn binary_op<T>(&mut self, f: fn(f64, f64) -> T, convert: fn(T) -> Value) -> Result<(), InterpretResult> {
         match (self.pop(), self.pop()) {
             // note: the first pop returns the right operand
             (Value::Number(b), Value::Number(a)) => {
-                self.stack.push(Value::Number(f(a, b)));
+                self.stack.push(convert(f(a, b)));
                 Ok(())
             }
             (b, a) => {
@@ -138,25 +138,6 @@ impl VM {
                 self.stack.push(a);
                 self.stack.push(b);
                 self.runtime_error("Operands must be numbers.")
-            }
-        }
-    }
-
-    // TODO: maybe can use macro to minize repetition in binary_op and binary_op_bool
-    // The closure return type can be generic so that f can return f64/bool
-    fn binary_op_bool(&mut self, f: fn(f64, f64) -> bool) -> Result<(), InterpretResult> {
-        match (self.pop(), self.pop()) {
-            // note: the first pop returns the right operand
-            (Value::Number(b), Value::Number(a)) => {
-                self.stack.push(Value::Bool(f(a, b)));
-                Ok(())
-            }
-            (b, a) => {
-                // Push them back on the stack
-                // TODO: Unnecessary? Runtime failure will crash program anyway
-                self.stack.push(a);
-                self.stack.push(b);
-                self.runtime_error("Operands must be boolean.")
             }
         }
     }
