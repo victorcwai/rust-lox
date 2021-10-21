@@ -12,3 +12,4 @@ Run by `cargo run`. Test with `cargo test`.
 - Use `usize` index instead of pointer+dereference to access element in array.
   - Though pointer+dereference should be faster?
 - Tagged union replaced by Enum(T)
+- String Object is represented by String type in Rust

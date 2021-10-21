@@ -155,7 +155,7 @@ impl<'src> Parser<'src> {
         );
         rule_map.insert(
             TokenType::String,
-            ParseRule::new(None, None, Precedence::None),
+            ParseRule::new(Some(Parser::string), None, Precedence::None),
         );
         rule_map.insert(
             TokenType::Number,
@@ -334,6 +334,10 @@ impl<'src> Parser<'src> {
                 .parse()
                 .expect("Cannot convert str to f64"),
         ));
+    }
+
+    fn string(&mut self) {
+        self.emit_constant(Value::StringObj(self.previous.lexeme[1..self.previous.lexeme.len()-1].to_string()));
     }
 
     fn unary(&mut self) {

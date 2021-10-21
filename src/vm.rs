@@ -53,7 +53,7 @@ impl VM {
                 OpCode::Constant(idx) => {
                     let constant = &self.chunk.constants.values[*idx as usize];
                     print_value(constant);
-                    self.stack.push(*constant);
+                    self.stack.push(constant.clone());
                     println!();
                 }
                 OpCode::Nil => self.stack.push(Value::Nil),
@@ -71,7 +71,15 @@ impl VM {
                     self.binary_op(|x, y| x < y, Value::Bool)?;
                 }
                 OpCode::Add => {
-                    self.binary_op(|x, y| x + y, Value::Number)?;
+                    match (self.peek(0), self.peek(1)) {
+                        (Value::Number(_), Value::Number(_)) => {
+                            self.binary_op(|x, y| x + y, Value::Number)?;
+                        }
+                        (Value::StringObj(_), Value::StringObj(_)) => {
+                            self.concatenate()?;
+                        }
+                        _ => return self.runtime_error("Operand must be a number."),
+                    }
                 }
                 OpCode::Subtract => {
                     self.binary_op(|x, y| x - y, Value::Number)?;
@@ -125,7 +133,29 @@ impl VM {
         }
     }
 
-    fn binary_op<T>(&mut self, f: fn(f64, f64) -> T, convert: fn(T) -> Value) -> Result<(), InterpretResult> {
+    // TODO: use macro to combine concatenate and binary_op to 1 method?
+    fn concatenate(&mut self) -> Result<(), InterpretResult> {
+        match (self.pop(), self.pop()) {
+            // note: the first pop returns the right operand
+            (Value::StringObj(b), Value::StringObj(a)) => {
+                self.stack.push(Value::StringObj(a + &b));
+                Ok(())
+            }
+            (b, a) => {
+                // Push them back on the stack
+                // TODO: Unnecessary? Runtime failure will crash program anyway
+                self.stack.push(a);
+                self.stack.push(b);
+                self.runtime_error("Operands must be two strings.")
+            }
+        }
+    }
+
+    fn binary_op<T>(
+        &mut self,
+        f: fn(f64, f64) -> T,
+        convert: fn(T) -> Value,
+    ) -> Result<(), InterpretResult> {
         match (self.pop(), self.pop()) {
             // note: the first pop returns the right operand
             (Value::Number(b), Value::Number(a)) => {
@@ -137,7 +167,7 @@ impl VM {
                 // TODO: Unnecessary? Runtime failure will crash program anyway
                 self.stack.push(a);
                 self.stack.push(b);
-                self.runtime_error("Operands must be numbers.")
+                self.runtime_error("Operands must be two numbers.")
             }
         }
     }
