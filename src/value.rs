@@ -9,7 +9,7 @@ pub enum Value {
     Number(f64),
     // enum and the ref to String are on the stack,
     // while the actual String is stored on the heap
-    StringObj(String),
+    StringObj(u32), // u32 = idx in string intern vec
 }
 
 pub struct ValueArray {

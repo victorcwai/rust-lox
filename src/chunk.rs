@@ -1,4 +1,7 @@
-use crate::value::{Value, ValueArray};
+use crate::{
+    interner::Interner,
+    value::{Value, ValueArray},
+};
 
 #[derive(Debug)]
 pub enum OpCode {
@@ -26,6 +29,7 @@ pub struct Chunk {
     pub code: Vec<OpCode>,
     pub constants: ValueArray,
     pub lines: Vec<usize>,
+    pub interner: Interner,
 }
 
 impl Chunk {
@@ -34,6 +38,7 @@ impl Chunk {
             code: Vec::new(),
             constants: ValueArray::new(),
             lines: Vec::new(),
+            interner: Interner::default(),
         }
     }
 

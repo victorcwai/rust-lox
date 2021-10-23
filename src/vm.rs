@@ -70,17 +70,15 @@ impl VM {
                 OpCode::Less => {
                     self.binary_op(|x, y| x < y, Value::Bool)?;
                 }
-                OpCode::Add => {
-                    match (self.peek(0), self.peek(1)) {
-                        (Value::Number(_), Value::Number(_)) => {
-                            self.binary_op(|x, y| x + y, Value::Number)?;
-                        }
-                        (Value::StringObj(_), Value::StringObj(_)) => {
-                            self.concatenate()?;
-                        }
-                        _ => return self.runtime_error("Operand must be a number."),
+                OpCode::Add => match (self.peek(0), self.peek(1)) {
+                    (Value::Number(_), Value::Number(_)) => {
+                        self.binary_op(|x, y| x + y, Value::Number)?;
                     }
-                }
+                    (Value::StringObj(_), Value::StringObj(_)) => {
+                        self.concatenate()?;
+                    }
+                    _ => return self.runtime_error("Operand must be a number."),
+                },
                 OpCode::Subtract => {
                     self.binary_op(|x, y| x - y, Value::Number)?;
                 }
@@ -133,12 +131,15 @@ impl VM {
         }
     }
 
-    // TODO: use macro to combine concatenate and binary_op to 1 method?
     fn concatenate(&mut self) -> Result<(), InterpretResult> {
         match (self.pop(), self.pop()) {
             // note: the first pop returns the right operand
             (Value::StringObj(b), Value::StringObj(a)) => {
-                self.stack.push(Value::StringObj(a + &b));
+                let b_str = self.chunk.interner.lookup(b);
+                let a_str = self.chunk.interner.lookup(a);
+                let res = a_str.to_owned() + b_str;
+                let res_idx = self.chunk.interner.intern_string(res);
+                self.stack.push(Value::StringObj(res_idx));
                 Ok(())
             }
             (b, a) => {

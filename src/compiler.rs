@@ -337,7 +337,9 @@ impl<'src> Parser<'src> {
     }
 
     fn string(&mut self) {
-        self.emit_constant(Value::StringObj(self.previous.lexeme[1..self.previous.lexeme.len()-1].to_string()));
+        let key = &self.previous.lexeme[1..self.previous.lexeme.len() - 1];
+        let idx = self.chunk.interner.intern(key);
+        self.emit_constant(Value::StringObj(idx));
     }
 
     fn unary(&mut self) {
