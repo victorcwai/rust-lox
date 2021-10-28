@@ -287,7 +287,8 @@ impl<'src> Parser<'src> {
 
     fn end_compiler(&mut self) {
         self.emit_return();
-        if cfg!(debug_assetions) && !self.had_error {
+        #[cfg(feature = "debug_trace_execution")]
+        if !self.had_error {
             crate::debug::disassemble_chunk(&self.chunk, "code");
         }
     }
