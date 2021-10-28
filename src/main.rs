@@ -6,8 +6,8 @@ use vm::{InterpretResult, VM};
 mod chunk;
 mod compiler;
 mod debug;
-mod scanner;
 mod interner;
+mod scanner;
 mod value;
 mod vm;
 use std::{env, fs, io};
@@ -50,7 +50,6 @@ fn repl(vm: &mut VM) {
                 vm.interpret(&buffer);
             }
         }
-        buffer.clear() // parse line one-by-one separately
     }
 }
 
