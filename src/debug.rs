@@ -25,6 +25,16 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OpCode::Nil => simple_instruction("OP_NIL", offset),
         OpCode::True => simple_instruction("OP_TRUE", offset),
         OpCode::False => simple_instruction("OP_FALSE", offset),
+        OpCode::Pop => simple_instruction("OP_POP", offset),
+        OpCode::DefineGlobal(idx) => {
+            constant_instruction("OP_DEFINE_GLOBAL", chunk, offset, (*idx).into())
+        }
+        OpCode::GetGlobal(idx) => {
+            constant_instruction("OP_GET_GLOBAL", chunk, offset, (*idx).into())
+        }
+        OpCode::SetGlobal(idx) => {
+            constant_instruction("OP_SET_GLOBAL", chunk, offset, (*idx).into())
+        }
         OpCode::Equal => simple_instruction("OP_EQUAL", offset),
         OpCode::Greater => simple_instruction("OP_GREATER", offset),
         OpCode::Less => simple_instruction("OP_LESS", offset),
@@ -34,6 +44,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OpCode::Divide => simple_instruction("OP_DIVIDE", offset),
         OpCode::Not => simple_instruction("OP_NOT", offset),
         OpCode::Negate => simple_instruction("OP_NEGATE", offset),
+        OpCode::Print => simple_instruction("OP_PRINT", offset),
         OpCode::Return => simple_instruction("OP_RETURN", offset),
         // _ => {
         //     println!("Unknown opcode {:?}\n", instruction);
@@ -49,7 +60,7 @@ fn simple_instruction(name: &str, offset: usize) -> usize {
 
 fn constant_instruction(name: &str, chunk: &Chunk, offset: usize, constant_idx: usize) -> usize {
     print!("{} {:?} '", name, constant_idx);
-    print_value(&chunk.constants.values[constant_idx]);
+    print_value(&chunk.constants.values[constant_idx], &chunk.interner);
     println!("'");
     offset + 1
 }

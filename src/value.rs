@@ -1,3 +1,5 @@
+use crate::interner::Interner;
+
 static ERR_MARGIN: f64 = f64::EPSILON;
 
 // Enum = tagged union in Rust
@@ -9,7 +11,8 @@ pub enum Value {
     Number(f64),
     // enum and the ref to String are on the stack,
     // while the actual String is stored on the heap
-    StringObj(u32), // u32 = idx in string intern vec
+    StringObj(u32),  // u32 = idx in string intern vec
+    Identifier(u32), // u32 = idx in string intern vec
 }
 
 pub struct ValueArray {
@@ -26,12 +29,13 @@ impl ValueArray {
     }
 }
 
-pub fn print_value(value: &Value) {
+pub fn print_value(value: &Value, interner: &Interner) {
     match value {
         Value::Bool(n) => print!("bool: {:?}", n),
         Value::Nil => print!("nil"),
         Value::Number(n) => print!("number: {:?}", n),
-        Value::StringObj(s) => print!("StringObj: {:?}", s),
+        Value::StringObj(s) => print!("StringObj: {:?}: {}", s, interner.lookup(*s)),
+        Value::Identifier(s) => print!("Identifier: {:?}: {}", s, interner.lookup(*s)),
     }
 }
 

@@ -9,6 +9,11 @@ pub enum OpCode {
     Nil,
     True,
     False,
+    Pop,
+    // u8 = constant_idx (constants store name of var)
+    DefineGlobal(u8),
+    GetGlobal(u8),
+    SetGlobal(u8),
     Equal,
     Greater,
     Less,
@@ -18,6 +23,7 @@ pub enum OpCode {
     Divide,
     Not,
     Negate,
+    Print,
     Return,
 }
 

@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::compiler::Parser;
 use crate::{
     chunk::{Chunk, OpCode},
@@ -8,9 +10,10 @@ use crate::{
 const STACK_SIZE: usize = 256;
 
 pub struct VM {
-    pub chunk: Chunk, // TODO: use &?
+    pub chunk: Chunk,
     pub ip: usize,
     pub stack: Vec<Value>,
+    pub globals: HashMap<u32, Value>, // u32 is interner idx
 }
 
 pub enum InterpretResult {
@@ -25,6 +28,7 @@ impl VM {
             chunk: Chunk::new(),
             ip: 0,
             stack: Vec::with_capacity(STACK_SIZE), // = reset stack
+            globals: HashMap::with_capacity(STACK_SIZE),
         }
     }
 
@@ -52,13 +56,52 @@ impl VM {
             match op {
                 OpCode::Constant(idx) => {
                     let constant = &self.chunk.constants.values[*idx as usize];
-                    print_value(constant);
+                    print_value(constant, &self.chunk.interner);
                     self.stack.push(constant.clone());
                     println!();
                 }
                 OpCode::Nil => self.stack.push(Value::Nil),
                 OpCode::True => self.stack.push(Value::Bool(true)),
                 OpCode::False => self.stack.push(Value::Bool(false)),
+                OpCode::Pop => {
+                    self.stack.pop();
+                }
+                OpCode::DefineGlobal(idx) => {
+                    let constant = &self.chunk.constants.values[*idx as usize];
+                    if let Value::Identifier(name) = constant {
+                        self.globals.insert(*name, self.peek(0).clone());
+                        self.stack.pop(); //TODO: pop wat?
+                    } else {
+                        return self.runtime_error("constant is not Value::Identifier!");
+                    }
+                }
+                OpCode::GetGlobal(idx) => {
+                    let constant = &self.chunk.constants.values[*idx as usize];
+                    if let Value::Identifier(name) = constant {
+                        if let Some(v) = self.globals.get(name) {
+                            self.stack.push(v.to_owned());
+                        } else {
+                            let msg = format!("Undefined variable {}.", name);
+                            return self.runtime_error(&msg);
+                        }
+                    } else {
+                        return self.runtime_error("constant is not Value::Identifier!");
+                    }
+                }
+                OpCode::SetGlobal(idx) => {
+                    let constant = &self.chunk.constants.values[*idx as usize];
+                    if let Value::Identifier(name) = constant {
+                        if self.globals.contains_key(name) {
+                            self.globals.insert(*name, self.peek(0).clone());
+                            // no pop -> in case the assignment is nested inside some larger expression
+                        } else {
+                            let msg = format!("Cannot assign to undefined variable {}.", name);
+                            return self.runtime_error(&msg);
+                        }
+                    } else {
+                        return self.runtime_error("constant is not Value::Identifier!");
+                    }
+                }
                 OpCode::Equal => {
                     let b = self.pop();
                     let a = self.pop();
@@ -101,9 +144,13 @@ impl VM {
                         return self.runtime_error("Operand must be a number.");
                     }
                 }
-                OpCode::Return => {
-                    print_value(&self.pop());
+                OpCode::Print => {
+                    print_value(&self.pop(), &self.chunk.interner);
                     println!();
+                    return Ok(());
+                }
+                OpCode::Return => {
+                    // Exit interpreter.
                     return Ok(());
                 }
             }
@@ -177,7 +224,7 @@ impl VM {
         print!("          ");
         for slot in &self.stack {
             print!("[ ");
-            print_value(slot);
+            print_value(slot, &self.chunk.interner);
             print!(" ]");
         }
         println!();
