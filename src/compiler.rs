@@ -404,15 +404,25 @@ impl<'src> Parser<'src> {
     }
 
     fn named_variable(&mut self, name: Token, can_assign: bool) {
-        let arg = self.identifier_constant(name);
+        let get_op;
+        let set_op;
+        if let Some(arg) = self.resolve_local(name) {
+            let idx = arg as u8;
+            get_op = OpCode::GetLocal(idx);
+            set_op = OpCode::SetLocal(idx);
+        } else {
+            let idx = self.identifier_constant(name);
+            get_op = OpCode::GetGlobal(idx);
+            set_op = OpCode::SetGlobal(idx);
+        }
         // look for an equals sign after the identifier
         if can_assign && self.equal(TokenType::Equal) {
             // If we find one, instead of emitting code for a variable access,
             // we compile the assigned value and then emit an assignment instruction.
             self.expression();
-            self.emit_byte(OpCode::SetGlobal(arg));
+            self.emit_byte(set_op);
         } else {
-            self.emit_byte(OpCode::GetGlobal(arg));
+            self.emit_byte(get_op);
         }
     }
 
@@ -476,6 +486,18 @@ impl<'src> Parser<'src> {
         a.lexeme == b.lexeme
     }
 
+    fn resolve_local(&mut self, name: Token) -> Option<usize> {
+        for (i, local) in self.compiler.locals.iter().enumerate().rev() {
+            if self.identifiers_equal(&name, &local.name) {
+                if local.depth == -1 {
+                    self.error("Cannot read local variable in its own initializer.");
+                }
+                return Some(i);
+            }
+        }
+        None
+    }
+
     // Initializes the next available Local
     fn add_local(&mut self, name: Token<'src>) {
         if self.compiler.locals.len() == USIZE_COUNT {
@@ -483,7 +505,7 @@ impl<'src> Parser<'src> {
             return;
         }
 
-        let local = Local::new(name, self.compiler.scope_depth);
+        let local = Local::new(name, -1);
         self.compiler.locals.push(local);
     }
 
@@ -520,8 +542,14 @@ impl<'src> Parser<'src> {
         self.identifier_constant(self.previous)
     }
 
+    fn mark_initialized(&mut self) {
+        let last = self.compiler.locals.last_mut().unwrap();
+        last.depth = self.compiler.scope_depth;
+    }
+
     fn define_variable(&mut self, global: u8) {
         if self.compiler.scope_depth > 0 {
+            self.mark_initialized();
             return;
         }
         self.emit_byte(OpCode::DefineGlobal(global));

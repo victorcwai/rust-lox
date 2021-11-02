@@ -35,6 +35,8 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
         OpCode::SetGlobal(idx) => {
             constant_instruction("OP_SET_GLOBAL", chunk, offset, (*idx).into())
         }
+        OpCode::GetLocal(idx) => byte_instruction("OP_GET_LOCAL", offset, (*idx).into()),
+        OpCode::SetLocal(idx) => byte_instruction("OP_SET_LOCAL", offset, (*idx).into()),
         OpCode::Equal => simple_instruction("OP_EQUAL", offset),
         OpCode::Greater => simple_instruction("OP_GREATER", offset),
         OpCode::Less => simple_instruction("OP_LESS", offset),
@@ -55,6 +57,11 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
 
 fn simple_instruction(name: &str, offset: usize) -> usize {
     println!("{}", name);
+    offset + 1
+}
+
+fn byte_instruction(name: &str, offset: usize, constant_idx: usize) -> usize {
+    println!("{} {:?} '", name, constant_idx);
     offset + 1
 }
 

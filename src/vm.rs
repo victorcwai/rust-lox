@@ -102,6 +102,12 @@ impl VM {
                         return self.runtime_error("constant is not Value::Identifier!");
                     }
                 }
+                OpCode::GetLocal(idx) => {
+                    self.stack.push(self.stack[*idx as usize]);
+                }
+                OpCode::SetLocal(idx) => {
+                    self.stack[*idx as usize] = *self.peek(0);
+                }
                 OpCode::Equal => {
                     let b = self.pop();
                     let a = self.pop();

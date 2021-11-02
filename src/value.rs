@@ -4,7 +4,7 @@ static ERR_MARGIN: f64 = f64::EPSILON;
 
 // Enum = tagged union in Rust
 // Ref: http://patshaughnessy.net/2018/3/15/how-rust-implements-tagged-unions
-#[derive(Clone, Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum Value {
     Bool(bool),
     Nil,
