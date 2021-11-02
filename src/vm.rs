@@ -145,9 +145,9 @@ impl VM {
                     }
                 }
                 OpCode::Print => {
+                    print!("OpCode::Print: ");
                     print_value(&self.pop(), &self.chunk.interner);
-                    println!();
-                    return Ok(());
+                    println!();                    
                 }
                 OpCode::Return => {
                     // Exit interpreter.
