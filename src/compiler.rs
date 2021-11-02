@@ -5,6 +5,8 @@ use crate::{
 };
 use std::{collections::HashMap, convert::TryFrom};
 
+static USIZE_COUNT: usize = u8::MAX as usize + 1;
+
 #[derive(PartialEq, PartialOrd)]
 enum Precedence {
     // "When derived on enums, variants are ordered by their top-to-bottom discriminant order."
@@ -62,9 +64,34 @@ impl<'src> ParseRule<'src> {
     }
 }
 
+pub struct Local<'src> {
+    name: Token<'src>,
+    depth: i32,
+}
+
+impl<'src> Local<'src> {
+    pub fn new(name: Token<'src>, depth: i32) -> Local<'src> {
+        Local { name, depth }
+    }
+}
+
+pub struct Compiler<'src> {
+    locals: Vec<Local<'src>>, // tracks how many locals are in scope
+    scope_depth: i32,         // # of blocks surrounding the current bit of code
+}
+
+impl<'src> Compiler<'src> {
+    pub fn new() -> Compiler<'src> {
+        Compiler {
+            locals: Vec::with_capacity(USIZE_COUNT),
+            scope_depth: 0,
+        }
+    }
+}
 // Parse code to output OpCode to chunk
 pub struct Parser<'src> {
     pub chunk: Chunk,
+    compiler: Compiler<'src>,
     current: Token<'src>,
     previous: Token<'src>,
     scanner: Scanner<'src>,
@@ -217,6 +244,7 @@ impl<'src> Parser<'src> {
         let dummy_token2 = Token::new(TokenType::Eof, 0, "");
         Parser {
             chunk: Chunk::new(),
+            compiler: Compiler::new(),
             current: dummy_token,
             previous: dummy_token2,
             scanner: Scanner::new(src),
@@ -304,6 +332,24 @@ impl<'src> Parser<'src> {
         #[cfg(feature = "debug_trace_execution")]
         if !self.had_error {
             crate::debug::disassemble_chunk(&self.chunk, "code");
+        }
+    }
+
+    fn begin_scope(&mut self) {
+        self.compiler.scope_depth += 1;
+    }
+
+    fn end_scope(&mut self) {
+        self.compiler.scope_depth -= 1;
+
+        while self.compiler.locals.len() > 0
+            && self.compiler.locals[self.compiler.locals.len() - 1].depth
+                > self.compiler.scope_depth
+        {
+            // Remove the var from the stack
+            self.emit_byte(OpCode::Pop);
+            // Remove the var from local array
+            self.compiler.locals.pop();
         }
     }
 
@@ -426,12 +472,58 @@ impl<'src> Parser<'src> {
         self.make_constant(Value::Identifier(identifier))
     }
 
+    fn identifiers_equal(&self, a: &Token, b: &Token) -> bool {
+        a.lexeme == b.lexeme
+    }
+
+    // Initializes the next available Local
+    fn add_local(&mut self, name: Token<'src>) {
+        if self.compiler.locals.len() == USIZE_COUNT {
+            self.error("Too many local variables in function.");
+            return;
+        }
+
+        let local = Local::new(name, self.compiler.scope_depth);
+        self.compiler.locals.push(local);
+    }
+
+    fn declare_variable(&mut self) {
+        if self.compiler.scope_depth == 0 {
+            return;
+        }
+
+        let name = self.previous;
+        // Check for redeclaring
+        for local in self.compiler.locals.iter().rev() {
+            // -1 = uninitialized
+            if local.depth != -1 && local.depth < self.compiler.scope_depth {
+                break;
+            }
+
+            if self.identifiers_equal(&name, &local.name) {
+                self.error("Already a variable with this name in this scope.");
+                break;
+            }
+        }
+
+        self.add_local(name);
+    }
+
     fn parse_variable(&mut self, err_msg: &str) -> u8 {
         self.consume(TokenType::Identifier, err_msg);
+
+        self.declare_variable();
+        if self.compiler.scope_depth > 0 {
+            return 0;
+        }
+
         self.identifier_constant(self.previous)
     }
 
     fn define_variable(&mut self, global: u8) {
+        if self.compiler.scope_depth > 0 {
+            return;
+        }
         self.emit_byte(OpCode::DefineGlobal(global));
     }
 
@@ -446,6 +538,14 @@ impl<'src> Parser<'src> {
         // parse the lowest precedence level,
         // which subsumes all of the higher-precedence expressions too
         self.parse_precedence(Precedence::Assignment);
+    }
+
+    fn block(&mut self) {
+        while !self.check(TokenType::RightBrace) && !self.check(TokenType::Eof) {
+            self.declaration();
+        }
+
+        self.consume(TokenType::RightBrace, "Expect '}' after block.");
     }
 
     fn var_declaration(&mut self) {
@@ -516,6 +616,10 @@ impl<'src> Parser<'src> {
     fn statement(&mut self) {
         if self.equal(TokenType::Print) {
             self.print_statement();
+        } else if self.equal(TokenType::LeftBrace) {
+            self.begin_scope();
+            self.block();
+            self.end_scope();
         } else {
             self.expression_statement();
         }
