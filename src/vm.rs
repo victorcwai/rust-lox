@@ -139,7 +139,7 @@ impl VM {
                 }
                 OpCode::Not => {
                     let val = self.pop();
-                    self.stack.push(Value::Bool(self.is_falsey(val)))
+                    self.stack.push(Value::Bool(self.is_falsey(&val)))
                 }
                 OpCode::Negate => {
                     if let Value::Number(val) = self.peek(0) {
@@ -153,7 +153,15 @@ impl VM {
                 OpCode::Print => {
                     print!("OpCode::Print: ");
                     print_value(&self.pop(), &self.chunk.interner);
-                    println!();                    
+                    println!();
+                }
+                OpCode::Jump(offset) => {
+                    self.ip += offset;
+                }
+                OpCode::JumpIfFalse(offset) => {
+                    if self.is_falsey(self.peek(0)) {
+                        self.ip += offset;
+                    }
                 }
                 OpCode::Return => {
                     // Exit interpreter.
@@ -176,7 +184,7 @@ impl VM {
             .expect("Failed to peek");
     }
 
-    fn is_falsey(&self, value: Value) -> bool {
+    fn is_falsey(&self, value: &Value) -> bool {
         match value {
             Value::Bool(b) => !b,
             Value::Nil => true,

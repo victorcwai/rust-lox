@@ -27,6 +27,9 @@ pub enum OpCode {
     Not,
     Negate,
     Print,
+    // usize = offset of OpCode to jump over
+    Jump(usize),
+    JumpIfFalse(usize),
     Return,
 }
 

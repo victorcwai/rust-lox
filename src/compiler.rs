@@ -307,8 +307,31 @@ impl<'src> Parser<'src> {
         self.chunk.write(byte2, self.previous.line);
     }
 
+    fn emit_jump(&mut self, instruction: OpCode) -> usize {
+        self.emit_byte(instruction);
+        return self.chunk.code.len() - 1;
+    }
+
     fn emit_return(&mut self) {
         self.emit_byte(OpCode::Return);
+    }
+
+    fn patch_jump(&mut self, offset: usize) {
+        // -1 to adjust for the bytecode (OpCode) for the jump offset itself.
+        let jump = self.chunk.code.len() - offset - 1;
+
+        if jump > USIZE_COUNT {
+            self.error("Too much code to jump over.");
+        }
+
+        // Replaces the operand at the given location with the calculated jump offset
+        match self.chunk.code[offset] {
+            OpCode::Jump(ref mut o) | OpCode::JumpIfFalse(ref mut o) => *o = jump,
+            _ => {
+                self.error("Operand is not Jump!");
+                println!("{:?}", self.chunk.code)
+            }
+        }
     }
 
     fn make_constant(&mut self, value: Value) -> u8 {
@@ -599,6 +622,25 @@ impl<'src> Parser<'src> {
         self.emit_byte(OpCode::Pop);
     }
 
+    fn if_statement(&mut self) {
+        self.consume(TokenType::LeftParen, "Expect '(' after 'if'.");
+        self.expression();
+        self.consume(TokenType::RightParen, "Expect ')' after condition.");
+
+        let then_jump = self.emit_jump(OpCode::JumpIfFalse(0xff));
+        self.emit_byte(OpCode::Pop); // pop the condition value
+        self.statement();
+
+        let else_jump = self.emit_jump(OpCode::Jump(0xff));
+        self.patch_jump(then_jump);
+        self.emit_byte(OpCode::Pop); // pop the condition value
+
+        if self.equal(TokenType::Else) {
+            self.statement();
+        }
+        self.patch_jump(else_jump);
+    }
+
     fn print_statement(&mut self) {
         self.expression();
         self.consume(TokenType::Semicolon, "Expect ';' after value.");
@@ -644,6 +686,8 @@ impl<'src> Parser<'src> {
     fn statement(&mut self) {
         if self.equal(TokenType::Print) {
             self.print_statement();
+        } else if self.equal(TokenType::If) {
+            self.if_statement();
         } else if self.equal(TokenType::LeftBrace) {
             self.begin_scope();
             self.block();
