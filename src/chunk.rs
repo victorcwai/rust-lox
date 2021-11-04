@@ -30,6 +30,7 @@ pub enum OpCode {
     // usize = offset of OpCode to jump over
     Jump(usize),
     JumpIfFalse(usize),
+    Loop(usize),
     Return,
 }
 

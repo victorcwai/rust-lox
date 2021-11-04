@@ -163,6 +163,9 @@ impl VM {
                         self.ip += offset;
                     }
                 }
+                OpCode::Loop(offset) => {
+                    self.ip -= offset + 1;
+                }
                 OpCode::Return => {
                     // Exit interpreter.
                     return Ok(());
