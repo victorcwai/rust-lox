@@ -57,7 +57,7 @@ impl VM {
                 OpCode::Constant(idx) => {
                     let constant = &self.chunk.constants.values[*idx as usize];
                     print_value(constant, &self.chunk.interner);
-                    self.stack.push(constant.clone());
+                    self.stack.push(*constant);
                     println!();
                 }
                 OpCode::Nil => self.stack.push(Value::Nil),
@@ -69,7 +69,7 @@ impl VM {
                 OpCode::DefineGlobal(idx) => {
                     let constant = &self.chunk.constants.values[*idx as usize];
                     if let Value::Identifier(name) = constant {
-                        self.globals.insert(*name, self.peek(0).clone());
+                        self.globals.insert(*name, *self.peek(0));
                         self.stack.pop(); //TODO: pop wat?
                     } else {
                         return self.runtime_error("constant is not Value::Identifier!");
@@ -92,7 +92,7 @@ impl VM {
                     let constant = &self.chunk.constants.values[*idx as usize];
                     if let Value::Identifier(name) = constant {
                         if self.globals.contains_key(name) {
-                            self.globals.insert(*name, self.peek(0).clone());
+                            self.globals.insert(*name, *self.peek(0));
                             // no pop -> in case the assignment is nested inside some larger expression
                         } else {
                             let msg = format!("Cannot assign to undefined variable {}.", name);

@@ -324,7 +324,7 @@ impl<'src> Parser<'src> {
 
     fn emit_jump(&mut self, instruction: OpCode) -> usize {
         self.emit_byte(instruction);
-        return self.chunk.code.len() - 1;
+        self.chunk.code.len() - 1
     }
 
     fn emit_return(&mut self) {
@@ -382,7 +382,7 @@ impl<'src> Parser<'src> {
     fn end_scope(&mut self) {
         self.compiler.scope_depth -= 1;
 
-        while self.compiler.locals.len() > 0
+        while !self.compiler.locals.is_empty()
             && self.compiler.locals[self.compiler.locals.len() - 1].depth
                 > self.compiler.scope_depth
         {
