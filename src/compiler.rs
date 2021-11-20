@@ -1,5 +1,6 @@
 use crate::{
     chunk::{Chunk, OpCode},
+    function::Function,
     scanner::{Scanner, Token, TokenType},
     value::Value,
 };
@@ -75,23 +76,37 @@ impl<'src> Local<'src> {
     }
 }
 
+enum FunctionType {
+    TypeFunction,
+    TypeScript,
+}
+
 pub struct Compiler<'src> {
+    pub function: Function,
+    f_type: FunctionType,
+
     locals: Vec<Local<'src>>, // tracks how many locals are in scope
     scope_depth: i32,         // # of blocks surrounding the current bit of code
 }
 
 impl<'src> Compiler<'src> {
     pub fn new() -> Compiler<'src> {
+        // Setstack slot zero for the VM’s own internal use
+        let mut locals = Vec::with_capacity(USIZE_COUNT);
+        let dummy_token = Local::new(Token::new(TokenType::Eof, 0, ""), 0);
+        locals.push(dummy_token);
+
         Compiler {
-            locals: Vec::with_capacity(USIZE_COUNT),
+            function: Function::new(),
+            f_type: FunctionType::TypeScript,
+            locals: locals,
             scope_depth: 0,
         }
     }
 }
 // Parse code to output OpCode to chunk
 pub struct Parser<'src> {
-    pub chunk: Chunk,
-    compiler: Compiler<'src>,
+    pub compiler: Compiler<'src>,
     current: Token<'src>,
     previous: Token<'src>,
     scanner: Scanner<'src>,
@@ -249,7 +264,6 @@ impl<'src> Parser<'src> {
         let dummy_token = Token::new(TokenType::Eof, 0, "");
         let dummy_token2 = Token::new(TokenType::Eof, 0, "");
         Parser {
-            chunk: Chunk::new(),
             compiler: Compiler::new(),
             current: dummy_token,
             previous: dummy_token2,
@@ -260,13 +274,14 @@ impl<'src> Parser<'src> {
         }
     }
 
-    pub fn compile(&mut self) -> bool {
+    pub fn compile(&mut self) -> Option<&Function> {
         self.advance();
         while !self.equal(TokenType::Eof) {
             self.declaration();
         }
-        self.end_compiler();
-        !self.had_error
+        let had_error = self.had_error;
+        let f = self.end_compiler();
+        return if had_error { None } else { Some(f) };
     }
 
     fn advance(&mut self) {
@@ -305,16 +320,22 @@ impl<'src> Parser<'src> {
     }
 
     fn emit_byte(&mut self, byte: OpCode) {
-        self.chunk.write(byte, self.previous.line);
+        self.compiler.function.chunk.write(byte, self.previous.line);
     }
 
     fn emit_bytes(&mut self, byte1: OpCode, byte2: OpCode) {
-        self.chunk.write(byte1, self.previous.line);
-        self.chunk.write(byte2, self.previous.line);
+        self.compiler
+            .function
+            .chunk
+            .write(byte1, self.previous.line);
+        self.compiler
+            .function
+            .chunk
+            .write(byte2, self.previous.line);
     }
 
     fn emit_loop(&mut self, loop_start: usize) {
-        let offset = self.chunk.code.len() - loop_start;
+        let offset = self.compiler.function.chunk.code.len() - loop_start;
         if offset > USIZE_COUNT {
             self.error("Loop body too large.");
         }
@@ -324,7 +345,7 @@ impl<'src> Parser<'src> {
 
     fn emit_jump(&mut self, instruction: OpCode) -> usize {
         self.emit_byte(instruction);
-        self.chunk.code.len() - 1
+        self.compiler.function.chunk.code.len() - 1
     }
 
     fn emit_return(&mut self) {
@@ -335,24 +356,24 @@ impl<'src> Parser<'src> {
     // current location (i.e. chunk.code[len-1])
     fn patch_jump(&mut self, offset: usize) {
         // -1 to adjust for the bytecode (OpCode) for the jump offset itself.
-        let jump = self.chunk.code.len() - offset - 1;
+        let jump = self.compiler.function.chunk.code.len() - offset - 1;
 
         if jump > USIZE_COUNT {
             self.error("Too much code to jump over.");
         }
 
         // Replaces the operand at the given location with the calculated jump offset
-        match self.chunk.code[offset] {
+        match self.compiler.function.chunk.code[offset] {
             OpCode::Jump(ref mut o) | OpCode::JumpIfFalse(ref mut o) => *o = jump,
             _ => {
                 self.error("Operand is not Jump!");
-                println!("{:?}", self.chunk.code)
+                println!("{:?}", self.compiler.function.chunk.code)
             }
         }
     }
 
     fn make_constant(&mut self, value: Value) -> u8 {
-        let idx = self.chunk.add_constant(value);
+        let idx = self.compiler.function.chunk.add_constant(value);
         match u8::try_from(idx) {
             Ok(idx) => idx,
             Err(_) => {
@@ -367,12 +388,24 @@ impl<'src> Parser<'src> {
         self.emit_byte(OpCode::Constant(constant_idx));
     }
 
-    fn end_compiler(&mut self) {
+    fn end_compiler(&mut self) -> &Function {
         self.emit_return();
+        let f = &self.compiler.function;
         #[cfg(feature = "debug_trace_execution")]
         if !self.had_error {
-            crate::debug::disassemble_chunk(&self.chunk, "code");
+            match f.name {
+                Some(name_idx) => {
+                    crate::debug::disassemble_chunk(
+                        &self.compiler.function.chunk,
+                        self.compiler.function.chunk.interner.lookup(name_idx),
+                    );
+                }
+                None => {
+                    crate::debug::disassemble_chunk(&self.compiler.function.chunk, "<script>");
+                }
+            }
         }
+        return f;
     }
 
     fn begin_scope(&mut self) {
@@ -452,7 +485,7 @@ impl<'src> Parser<'src> {
 
     fn string(&mut self, can_assign: bool) {
         let key = &self.previous.lexeme[1..self.previous.lexeme.len() - 1];
-        let idx = self.chunk.interner.intern(key);
+        let idx = self.compiler.function.chunk.interner.intern(key);
         self.emit_constant(Value::StringObj(idx));
     }
 
@@ -531,7 +564,7 @@ impl<'src> Parser<'src> {
     fn identifier_constant(&mut self, name: Token) -> u8 {
         // Global variables are looked up by name at runtime.
         // Store the string in the constant table (instead of bytecode "stream") for instructions
-        let identifier = self.chunk.interner.intern(name.lexeme);
+        let identifier = self.compiler.function.chunk.interner.intern(name.lexeme);
         self.make_constant(Value::Identifier(identifier))
     }
 
@@ -674,7 +707,7 @@ impl<'src> Parser<'src> {
             self.expression_statement();
         }
 
-        let mut loop_start = self.chunk.code.len();
+        let mut loop_start = self.compiler.function.chunk.code.len();
 
         // Condition clause (Optional)
         let mut exit_jump = None;
@@ -690,7 +723,7 @@ impl<'src> Parser<'src> {
         // Increment clause (Optional)
         if !self.equal(TokenType::RightParen) {
             let body_jump = self.emit_jump(OpCode::Jump(0xff));
-            let increment_start = self.chunk.code.len();
+            let increment_start = self.compiler.function.chunk.code.len();
             self.expression();
             self.emit_byte(OpCode::Pop); // discard increment expression's value
             self.consume(TokenType::RightParen, "Expect ')' after for clauses.");
@@ -738,7 +771,7 @@ impl<'src> Parser<'src> {
     }
 
     fn while_statement(&mut self) {
-        let loop_start = self.chunk.code.len(); // start location of loop
+        let loop_start = self.compiler.function.chunk.code.len(); // start location of loop
         self.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after condition.");

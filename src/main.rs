@@ -6,6 +6,7 @@ use vm::{InterpretResult, VM};
 mod chunk;
 mod compiler;
 mod debug;
+mod function;
 mod interner;
 mod scanner;
 mod value;

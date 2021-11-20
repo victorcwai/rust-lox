@@ -17,3 +17,4 @@ Test with `cargo test`.
 - Tagged union replaced by Enum(T)
 - No `Value::Obj` that can save arbitary object
 - String Object (`Value::StringObj(u32)`) is interned by `HashMap<String, u32>`
+- No printing for `Function` object
