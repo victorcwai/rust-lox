@@ -1,17 +1,18 @@
 use crate::{
     chunk::{Chunk, OpCode},
+    interner::Interner,
     value::print_value,
 };
 
-pub fn disassemble_chunk(chunk: &Chunk, name: &str) {
+pub fn disassemble_chunk(chunk: &Chunk, name: &str, interner: &Interner) {
     println!("== {} ==", name);
     let mut offset = 0;
     while offset < chunk.code.len() {
-        offset = disassemble_instruction(chunk, offset);
+        offset = disassemble_instruction(chunk, offset, interner);
     }
 }
 
-pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
+pub fn disassemble_instruction(chunk: &Chunk, offset: usize, interner: &Interner) -> usize {
     print!("{} ", offset);
     if offset > 0 && chunk.lines[offset] == chunk.lines[offset - 1] {
         print!("   | ");
@@ -21,19 +22,21 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize) -> usize {
 
     let instruction = &chunk.code[offset];
     match instruction {
-        OpCode::Constant(idx) => constant_instruction("OP_CONSTANT", chunk, offset, (*idx).into()),
+        OpCode::Constant(idx) => {
+            constant_instruction("OP_CONSTANT", chunk, offset, (*idx).into(), interner)
+        }
         OpCode::Nil => simple_instruction("OP_NIL", offset),
         OpCode::True => simple_instruction("OP_TRUE", offset),
         OpCode::False => simple_instruction("OP_FALSE", offset),
         OpCode::Pop => simple_instruction("OP_POP", offset),
         OpCode::DefineGlobal(idx) => {
-            constant_instruction("OP_DEFINE_GLOBAL", chunk, offset, (*idx).into())
+            constant_instruction("OP_DEFINE_GLOBAL", chunk, offset, (*idx).into(), interner)
         }
         OpCode::GetGlobal(idx) => {
-            constant_instruction("OP_GET_GLOBAL", chunk, offset, (*idx).into())
+            constant_instruction("OP_GET_GLOBAL", chunk, offset, (*idx).into(), interner)
         }
         OpCode::SetGlobal(idx) => {
-            constant_instruction("OP_SET_GLOBAL", chunk, offset, (*idx).into())
+            constant_instruction("OP_SET_GLOBAL", chunk, offset, (*idx).into(), interner)
         }
         OpCode::GetLocal(idx) => byte_instruction("OP_GET_LOCAL", offset, (*idx).into()),
         OpCode::SetLocal(idx) => byte_instruction("OP_SET_LOCAL", offset, (*idx).into()),
@@ -91,9 +94,15 @@ fn jump_instruction(
     offset + 1
 }
 
-fn constant_instruction(name: &str, chunk: &Chunk, offset: usize, constant_idx: usize) -> usize {
+fn constant_instruction(
+    name: &str,
+    chunk: &Chunk,
+    offset: usize,
+    constant_idx: usize,
+    interner: &Interner,
+) -> usize {
     print!("{} {:?} '", name, constant_idx);
-    print_value(&chunk.constants.values[constant_idx], &chunk.interner);
+    print_value(&chunk.constants.values[constant_idx], interner);
     println!("'");
     offset + 1
 }

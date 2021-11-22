@@ -1,12 +1,13 @@
 use crate::{
-    chunk::{Chunk, OpCode},
+    chunk::OpCode,
     function::Function,
+    interner::Interner,
     scanner::{Scanner, Token, TokenType},
     value::Value,
 };
 use std::{collections::HashMap, convert::TryFrom};
 
-static USIZE_COUNT: usize = u8::MAX as usize + 1;
+pub const USIZE_COUNT: usize = u8::MAX as usize + 1;
 
 #[derive(PartialEq, PartialOrd)]
 enum Precedence {
@@ -99,7 +100,7 @@ impl<'src> Compiler<'src> {
         Compiler {
             function: Function::new(),
             f_type: FunctionType::TypeScript,
-            locals: locals,
+            locals,
             scope_depth: 0,
         }
     }
@@ -107,6 +108,7 @@ impl<'src> Compiler<'src> {
 // Parse code to output OpCode to chunk
 pub struct Parser<'src> {
     pub compiler: Compiler<'src>,
+    interner: &'src mut Interner,
     current: Token<'src>,
     previous: Token<'src>,
     scanner: Scanner<'src>,
@@ -116,7 +118,7 @@ pub struct Parser<'src> {
 }
 
 impl<'src> Parser<'src> {
-    pub fn new(src: &'src str) -> Parser<'src> {
+    pub fn new(src: &'src str, interner: &'src mut Interner) -> Parser<'src> {
         let mut rule_map = HashMap::new();
         rule_map.insert(
             TokenType::LeftParen,
@@ -265,6 +267,7 @@ impl<'src> Parser<'src> {
         let dummy_token2 = Token::new(TokenType::Eof, 0, "");
         Parser {
             compiler: Compiler::new(),
+            interner,
             current: dummy_token,
             previous: dummy_token2,
             scanner: Scanner::new(src),
@@ -274,14 +277,18 @@ impl<'src> Parser<'src> {
         }
     }
 
-    pub fn compile(&mut self) -> Option<&Function> {
+    pub fn compile(mut self) -> Option<Function> {
         self.advance();
         while !self.equal(TokenType::Eof) {
             self.declaration();
         }
         let had_error = self.had_error;
         let f = self.end_compiler();
-        return if had_error { None } else { Some(f) };
+        if had_error {
+            None
+        } else {
+            Some(f)
+        }
     }
 
     fn advance(&mut self) {
@@ -388,24 +395,25 @@ impl<'src> Parser<'src> {
         self.emit_byte(OpCode::Constant(constant_idx));
     }
 
-    fn end_compiler(&mut self) -> &Function {
+    fn end_compiler(mut self) -> Function {
         self.emit_return();
-        let f = &self.compiler.function;
+        let f = self.compiler.function;
         #[cfg(feature = "debug_trace_execution")]
         if !self.had_error {
             match f.name {
                 Some(name_idx) => {
                     crate::debug::disassemble_chunk(
-                        &self.compiler.function.chunk,
-                        self.compiler.function.chunk.interner.lookup(name_idx),
+                        &f.chunk,
+                        self.interner.lookup(name_idx),
+                        &self.interner,
                     );
                 }
                 None => {
-                    crate::debug::disassemble_chunk(&self.compiler.function.chunk, "<script>");
+                    crate::debug::disassemble_chunk(&f.chunk, "<script>", &self.interner);
                 }
             }
         }
-        return f;
+        f
     }
 
     fn begin_scope(&mut self) {
@@ -485,7 +493,7 @@ impl<'src> Parser<'src> {
 
     fn string(&mut self, can_assign: bool) {
         let key = &self.previous.lexeme[1..self.previous.lexeme.len() - 1];
-        let idx = self.compiler.function.chunk.interner.intern(key);
+        let idx = self.interner.intern(key);
         self.emit_constant(Value::StringObj(idx));
     }
 
@@ -564,7 +572,7 @@ impl<'src> Parser<'src> {
     fn identifier_constant(&mut self, name: Token) -> u8 {
         // Global variables are looked up by name at runtime.
         // Store the string in the constant table (instead of bytecode "stream") for instructions
-        let identifier = self.compiler.function.chunk.interner.intern(name.lexeme);
+        let identifier = self.interner.intern(name.lexeme);
         self.make_constant(Value::Identifier(identifier))
     }
 

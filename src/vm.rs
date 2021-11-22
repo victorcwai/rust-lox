@@ -1,17 +1,35 @@
-use std::collections::HashMap;
-
 use crate::compiler::Parser;
+use crate::compiler::USIZE_COUNT;
+use crate::function::Function;
+use crate::interner::Interner;
 use crate::{
-    chunk::{Chunk, OpCode},
-    debug::disassemble_instruction,
+    chunk::OpCode,
     value::{print_value, values_equal, Value},
 };
+use std::collections::HashMap;
 
-const STACK_SIZE: usize = 256;
+const STACK_SIZE: usize = FRAMES_MAX * USIZE_COUNT;
+const FRAMES_MAX: usize = 64;
+
+pub struct CallFrame {
+    pub function: Function,
+    pub ip: usize,         // ip of the caller
+    pub slots: Vec<Value>, // local slots of this frame
+}
+
+impl CallFrame {
+    fn new(function: Function) -> Self {
+        CallFrame {
+            function,
+            ip: 0,
+            slots: Vec::with_capacity(USIZE_COUNT),
+        }
+    }
+}
 
 pub struct VM {
-    pub chunk: Chunk,
-    pub ip: usize,
+    pub frames: Vec<CallFrame>,
+    pub interner: Interner,
     pub stack: Vec<Value>,
     pub globals: HashMap<u32, Value>, // u32 is interner idx
 }
@@ -25,22 +43,23 @@ pub enum InterpretResult {
 impl VM {
     pub fn new() -> VM {
         VM {
-            chunk: Chunk::new(),
-            ip: 0,
+            frames: Vec::with_capacity(FRAMES_MAX),
+            interner: Interner::default(),
             stack: Vec::with_capacity(STACK_SIZE), // = reset stack
             globals: HashMap::with_capacity(STACK_SIZE),
         }
     }
 
     pub fn interpret(&mut self, source: &str) -> Result<(), InterpretResult> {
-        let mut parser = Parser::new(source);
+        let parser = Parser::new(source, &mut self.interner);
 
-        if parser.compile().is_none() {
-            return Err(InterpretResult::CompileError);
+        match parser.compile() {
+            Some(function) => {
+                // TODO: self.stack.push(Value::) // push the function on the stack
+                self.frames.push(CallFrame::new(function));
+            }
+            None => return Err(InterpretResult::CompileError),
         }
-
-        self.chunk = parser.compiler.function.chunk;
-        self.ip = 0; // or self.chunk.code?
 
         self.run()
     }
@@ -51,13 +70,14 @@ impl VM {
         // wrap in Result, so that we can use the question mark operator to:
         // 1. *Return* InterpretResult if error
         // 2. Unpacks the Result ((), i.e. do nothing) if no error
+        let mut frame = self.frames.pop().unwrap(); // TODO: fix this
         loop {
-            let op = &self.chunk.code[self.ip];
+            let op = frame.function.chunk.code[frame.ip];
             match op {
                 OpCode::Constant(idx) => {
-                    let constant = &self.chunk.constants.values[*idx as usize];
-                    print_value(constant, &self.chunk.interner);
-                    self.stack.push(*constant);
+                    let constant = frame.function.chunk.constants.values[idx as usize];
+                    print_value(&constant, &self.interner);
+                    self.stack.push(constant);
                     println!();
                 }
                 OpCode::Nil => self.stack.push(Value::Nil),
@@ -67,18 +87,18 @@ impl VM {
                     self.stack.pop();
                 }
                 OpCode::DefineGlobal(idx) => {
-                    let constant = &self.chunk.constants.values[*idx as usize];
+                    let constant = frame.function.chunk.constants.values[idx as usize];
                     if let Value::Identifier(name) = constant {
-                        self.globals.insert(*name, *self.peek(0));
+                        self.globals.insert(name, *self.peek(0));
                         self.stack.pop(); //TODO: pop wat?
                     } else {
                         return self.runtime_error("constant is not Value::Identifier!");
                     }
                 }
                 OpCode::GetGlobal(idx) => {
-                    let constant = &self.chunk.constants.values[*idx as usize];
+                    let constant = frame.function.chunk.constants.values[idx as usize];
                     if let Value::Identifier(name) = constant {
-                        if let Some(v) = self.globals.get(name) {
+                        if let Some(v) = self.globals.get(&name) {
                             self.stack.push(v.to_owned());
                         } else {
                             let msg = format!("Undefined variable {}.", name);
@@ -89,10 +109,10 @@ impl VM {
                     }
                 }
                 OpCode::SetGlobal(idx) => {
-                    let constant = &self.chunk.constants.values[*idx as usize];
+                    let constant = frame.function.chunk.constants.values[idx as usize];
                     if let Value::Identifier(name) = constant {
-                        if self.globals.contains_key(name) {
-                            self.globals.insert(*name, *self.peek(0));
+                        if self.globals.contains_key(&name) {
+                            self.globals.insert(name, *self.peek(0));
                             // no pop -> in case the assignment is nested inside some larger expression
                         } else {
                             let msg = format!("Cannot assign to undefined variable {}.", name);
@@ -103,10 +123,10 @@ impl VM {
                     }
                 }
                 OpCode::GetLocal(idx) => {
-                    self.stack.push(self.stack[*idx as usize]);
+                    self.stack.push(frame.slots[idx as usize]);
                 }
                 OpCode::SetLocal(idx) => {
-                    self.stack[*idx as usize] = *self.peek(0);
+                    frame.slots[idx as usize] = *self.peek(0);
                 }
                 OpCode::Equal => {
                     let b = self.pop();
@@ -152,26 +172,26 @@ impl VM {
                 }
                 OpCode::Print => {
                     print!("OpCode::Print: ");
-                    print_value(&self.pop(), &self.chunk.interner);
+                    print_value(&self.pop(), &self.interner);
                     println!();
                 }
                 OpCode::Jump(offset) => {
-                    self.ip += offset;
+                    frame.ip += offset;
                 }
                 OpCode::JumpIfFalse(offset) => {
                     if self.is_falsey(self.peek(0)) {
-                        self.ip += offset;
+                        frame.ip += offset;
                     }
                 }
                 OpCode::Loop(offset) => {
-                    self.ip -= offset + 1;
+                    frame.ip -= offset + 1;
                 }
                 OpCode::Return => {
                     // Exit interpreter.
                     return Ok(());
                 }
             }
-            self.ip += 1;
+            frame.ip += 1;
         }
     }
 
@@ -199,10 +219,10 @@ impl VM {
         match (self.pop(), self.pop()) {
             // note: the first pop returns the right operand
             (Value::StringObj(b), Value::StringObj(a)) => {
-                let b_str = self.chunk.interner.lookup(b);
-                let a_str = self.chunk.interner.lookup(a);
+                let b_str = self.interner.lookup(b);
+                let a_str = self.interner.lookup(a);
                 let res = a_str.to_owned() + b_str;
-                let res_idx = self.chunk.interner.intern_string(res);
+                let res_idx = self.interner.intern_string(res);
                 self.stack.push(Value::StringObj(res_idx));
                 Ok(())
             }
@@ -237,23 +257,24 @@ impl VM {
         }
     }
 
-    pub fn debug_trace_execution(&self) {
-        print!("          ");
-        for slot in &self.stack {
-            print!("[ ");
-            print_value(slot, &self.chunk.interner);
-            print!(" ]");
-        }
-        println!();
-        disassemble_instruction(&self.chunk, self.ip);
-    }
+    // pub fn debug_trace_execution(&self) {
+    //     print!("          ");
+    //     for slot in &self.stack {
+    //         print!("[ ");
+    //         print_value(slot, &self.interner);
+    //         print!(" ]");
+    //     }
+    //     println!();
+    //     disassemble_instruction(&self.chunk, self.ip);
+    // }
 
     // Note: All errors are fatal and immediately halt the interpreter.
     // No variadic functions in rust
     fn runtime_error(&self, msg: &str) -> Result<(), InterpretResult> {
         eprintln!("{}", msg);
-        let instruction = self.ip - 1;
-        let line = self.chunk.lines[instruction];
+        let frame = &self.frames.last().unwrap();
+        let instruction = frame.ip - 1;
+        let line = frame.function.chunk.lines[instruction];
         eprintln!("[line {}] in script", line);
         // resetStack(); // TODO: no need?
         Err(InterpretResult::RuntimeError)
