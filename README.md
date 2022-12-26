@@ -6,7 +6,7 @@ I am writing it while learning Rust, so it is definitely not perfect/idiomatic.
 
 Run by `cargo run`. Run with debug mode by `cargo run --all-features`.
 
-Test with `cargo test`.
+Test with `cargo test -- --nocapture` (`--nocapture` means print statements will be shown).
 
 # Difference between rust-lox and clox #
 - Op instruction is implemented with the `OpCode` enum (instead of `u8`), which could be > 1 byte. A chunk has a `Vec` of `OpCode`. 
@@ -18,3 +18,9 @@ Test with `cargo test`.
 - No `Value::Obj` that can save arbitary object
 - String Object (`Value::StringObj(u32)`) is interned by `HashMap<String, u32>`
 - No printing for `Function` object
+
+<!-- # Running test suite #
+1. `git clone https://github.com/munificent/craftinginterpreters`
+2. `cargo build`
+3. `dart ./craftinginterpreters/tool/bin/test.dart {test_suite} --interpreter ./target/debug/rust-lox.exe`
+  - See makefile (https://github.com/munificent/craftinginterpreters/blob/master/Makefile) for `test_suite`, e.g. `chap14_chunks`. -->

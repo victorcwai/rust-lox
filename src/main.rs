@@ -66,3 +66,58 @@ fn run_file(vm: &mut VM, path: &str) {
         Err(InterpretResult::Ok) => exit(0), // should not happen
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use std::convert::TryInto;
+
+    use crate::chunk::{Chunk, OpCode};
+    use crate::debug::disassemble_chunk;
+    use crate::interner::Interner;
+    use crate::value;
+    use crate::vm::VM;
+
+    #[test]
+    fn ch14_chunk() {
+        let mut vm = VM::new();
+
+        let mut c = Chunk::new();
+
+        // add the constant value itself to the chunk’s constant pool
+        let constant = c.add_constant(value::Value::Number(1.2));
+        c.write(OpCode::Constant(constant.try_into().unwrap()), 123);
+
+        c.write(OpCode::Return, 123);
+
+        disassemble_chunk(&c, "test chunk", &Interner::default());
+        let res = vm.interpret("print 1.2;");
+        assert_eq!(res.err(), None);
+    }
+
+    #[test]
+    fn ch15_vm() {
+        let mut vm = VM::new();
+
+        let mut c = Chunk::new();
+
+        let constant = c.add_constant(value::Value::Number(1.2));
+        c.write(OpCode::Constant(constant.try_into().unwrap()), 123);
+
+        let constant = c.add_constant(value::Value::Number(3.4));
+        c.write(OpCode::Constant(constant.try_into().unwrap()), 123);
+
+        c.write(OpCode::Add, 123);
+
+        let constant = c.add_constant(value::Value::Number(5.6));
+        c.write(OpCode::Constant(constant.try_into().unwrap()), 123);
+
+        c.write(OpCode::Divide, 123);
+        c.write(OpCode::Negate, 123);
+
+        c.write(OpCode::Return, 123);
+
+        disassemble_chunk(&c, "test vm", &Interner::default());
+        let res = vm.interpret("print - (1.2 + 3.4 / 5.6);");
+        assert_eq!(res.err(), None);
+    }
+}

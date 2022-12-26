@@ -34,6 +34,7 @@ pub struct VM {
     pub globals: HashMap<u32, Value>, // u32 is interner idx
 }
 
+#[derive(PartialEq, Debug)]
 pub enum InterpretResult {
     Ok,
     CompileError,
