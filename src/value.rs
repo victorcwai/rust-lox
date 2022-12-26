@@ -15,6 +15,7 @@ pub enum Value {
     Identifier(u32), // u32 = idx in string intern vec
 }
 
+// The constant pool is an array of values. The instruction to load a constant looks up the value by index in that array.
 pub struct ValueArray {
     pub values: Vec<Value>,
 }

@@ -9,7 +9,7 @@ use std::{collections::HashMap, convert::TryFrom};
 
 pub const USIZE_COUNT: usize = u8::MAX as usize + 1;
 
-#[derive(PartialEq, PartialOrd)]
+#[derive(Debug, PartialEq, PartialOrd)]
 enum Precedence {
     // "When derived on enums, variants are ordered by their top-to-bottom discriminant order."
     // from lowest to highest
@@ -122,7 +122,7 @@ impl<'src> Parser<'src> {
         let mut rule_map = HashMap::new();
         rule_map.insert(
             TokenType::LeftParen,
-            ParseRule::new(Some(Parser::grouping), None, Precedence::None),
+            ParseRule::new(Some(Parser::rule_grouping), None, Precedence::None),
         );
         rule_map.insert(
             TokenType::RightParen,
@@ -143,11 +143,15 @@ impl<'src> Parser<'src> {
         rule_map.insert(TokenType::Dot, ParseRule::new(None, None, Precedence::None));
         rule_map.insert(
             TokenType::Minus,
-            ParseRule::new(Some(Parser::unary), Some(Parser::binary), Precedence::Term),
+            ParseRule::new(
+                Some(Parser::rule_unary),
+                Some(Parser::rule_binary),
+                Precedence::Term,
+            ),
         );
         rule_map.insert(
             TokenType::Plus,
-            ParseRule::new(None, Some(Parser::binary), Precedence::Term),
+            ParseRule::new(None, Some(Parser::rule_binary), Precedence::Term),
         );
         rule_map.insert(
             TokenType::Semicolon,
@@ -155,19 +159,19 @@ impl<'src> Parser<'src> {
         );
         rule_map.insert(
             TokenType::Slash,
-            ParseRule::new(None, Some(Parser::binary), Precedence::Factor),
+            ParseRule::new(None, Some(Parser::rule_binary), Precedence::Factor),
         );
         rule_map.insert(
             TokenType::Star,
-            ParseRule::new(None, Some(Parser::binary), Precedence::Factor),
+            ParseRule::new(None, Some(Parser::rule_binary), Precedence::Factor),
         );
         rule_map.insert(
             TokenType::Bang,
-            ParseRule::new(Some(Parser::unary), None, Precedence::None),
+            ParseRule::new(Some(Parser::rule_unary), None, Precedence::None),
         );
         rule_map.insert(
             TokenType::BangEqual,
-            ParseRule::new(None, Some(Parser::binary), Precedence::Equality),
+            ParseRule::new(None, Some(Parser::rule_binary), Precedence::Equality),
         );
         rule_map.insert(
             TokenType::Equal,
@@ -175,39 +179,39 @@ impl<'src> Parser<'src> {
         );
         rule_map.insert(
             TokenType::EqualEqual,
-            ParseRule::new(None, Some(Parser::binary), Precedence::Equality),
+            ParseRule::new(None, Some(Parser::rule_binary), Precedence::Equality),
         );
         rule_map.insert(
             TokenType::Greater,
-            ParseRule::new(None, Some(Parser::binary), Precedence::Comparison),
+            ParseRule::new(None, Some(Parser::rule_binary), Precedence::Comparison),
         );
         rule_map.insert(
             TokenType::GreaterEqual,
-            ParseRule::new(None, Some(Parser::binary), Precedence::Comparison),
+            ParseRule::new(None, Some(Parser::rule_binary), Precedence::Comparison),
         );
         rule_map.insert(
             TokenType::Less,
-            ParseRule::new(None, Some(Parser::binary), Precedence::Comparison),
+            ParseRule::new(None, Some(Parser::rule_binary), Precedence::Comparison),
         );
         rule_map.insert(
             TokenType::LessEqual,
-            ParseRule::new(None, Some(Parser::binary), Precedence::Comparison),
+            ParseRule::new(None, Some(Parser::rule_binary), Precedence::Comparison),
         );
         rule_map.insert(
             TokenType::Identifier,
-            ParseRule::new(Some(Parser::variable), None, Precedence::None),
+            ParseRule::new(Some(Parser::rule_variable), None, Precedence::None),
         );
         rule_map.insert(
             TokenType::String,
-            ParseRule::new(Some(Parser::string), None, Precedence::None),
+            ParseRule::new(Some(Parser::rule_string), None, Precedence::None),
         );
         rule_map.insert(
             TokenType::Number,
-            ParseRule::new(Some(Parser::number), None, Precedence::None),
+            ParseRule::new(Some(Parser::rule_number), None, Precedence::None),
         );
         rule_map.insert(
             TokenType::And,
-            ParseRule::new(None, Some(Parser::and), Precedence::And),
+            ParseRule::new(None, Some(Parser::rule_and), Precedence::And),
         );
         rule_map.insert(
             TokenType::Class,
@@ -219,18 +223,18 @@ impl<'src> Parser<'src> {
         );
         rule_map.insert(
             TokenType::False,
-            ParseRule::new(Some(Parser::literal), None, Precedence::None),
+            ParseRule::new(Some(Parser::rule_literal), None, Precedence::None),
         );
         rule_map.insert(TokenType::For, ParseRule::new(None, None, Precedence::None));
         rule_map.insert(TokenType::Fun, ParseRule::new(None, None, Precedence::None));
         rule_map.insert(TokenType::If, ParseRule::new(None, None, Precedence::None));
         rule_map.insert(
             TokenType::Nil,
-            ParseRule::new(Some(Parser::literal), None, Precedence::None),
+            ParseRule::new(Some(Parser::rule_literal), None, Precedence::None),
         );
         rule_map.insert(
             TokenType::Or,
-            ParseRule::new(None, Some(Parser::or), Precedence::Or),
+            ParseRule::new(None, Some(Parser::rule_or), Precedence::Or),
         );
         rule_map.insert(
             TokenType::Print,
@@ -250,7 +254,7 @@ impl<'src> Parser<'src> {
         );
         rule_map.insert(
             TokenType::True,
-            ParseRule::new(Some(Parser::literal), None, Precedence::None),
+            ParseRule::new(Some(Parser::rule_literal), None, Precedence::None),
         );
         rule_map.insert(TokenType::Var, ParseRule::new(None, None, Precedence::None));
         rule_map.insert(
@@ -434,7 +438,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn binary(&mut self, can_assign: bool) {
+    fn rule_binary(&mut self, can_assign: bool) {
         let operator_type = self.previous.token_type;
         // let rule = self.get_rule(operator_type);
         self.parse_precedence(self.get_rule(operator_type).precedence.next());
@@ -454,7 +458,7 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn literal(&mut self, can_assign: bool) {
+    fn rule_literal(&mut self, can_assign: bool) {
         match self.previous.token_type {
             TokenType::False => self.emit_byte(OpCode::False),
             TokenType::Nil => self.emit_byte(OpCode::Nil),
@@ -463,13 +467,13 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn grouping(&mut self, can_assign: bool) {
+    fn rule_grouping(&mut self, can_assign: bool) {
         // i.e. "(", grouping has no meaning for backend
         self.expression();
         self.consume(TokenType::RightParen, "Expect ')' after expression.");
     }
 
-    fn number(&mut self, can_assign: bool) {
+    fn rule_number(&mut self, can_assign: bool) {
         self.emit_constant(Value::Number(
             self.previous
                 .lexeme
@@ -478,7 +482,7 @@ impl<'src> Parser<'src> {
         ));
     }
 
-    fn or(&mut self, can_assign: bool) {
+    fn rule_or(&mut self, can_assign: bool) {
         let else_jump = self.emit_jump(OpCode::JumpIfFalse(0xff));
         let end_jump = self.emit_jump(OpCode::Jump(0xff));
 
@@ -491,7 +495,7 @@ impl<'src> Parser<'src> {
         self.patch_jump(end_jump);
     }
 
-    fn string(&mut self, can_assign: bool) {
+    fn rule_string(&mut self, can_assign: bool) {
         let key = &self.previous.lexeme[1..self.previous.lexeme.len() - 1];
         let idx = self.interner.intern(key);
         self.emit_constant(Value::StringObj(idx));
@@ -520,11 +524,11 @@ impl<'src> Parser<'src> {
         }
     }
 
-    fn variable(&mut self, can_assign: bool) {
+    fn rule_variable(&mut self, can_assign: bool) {
         self.named_variable(self.previous, can_assign);
     }
 
-    fn unary(&mut self, can_assign: bool) {
+    fn rule_unary(&mut self, can_assign: bool) {
         let operator_type = self.previous.token_type;
 
         // Compile the operand.
@@ -542,7 +546,14 @@ impl<'src> Parser<'src> {
     fn parse_precedence(&mut self, precedence: Precedence) {
         // read the next token and look up the corresponding ParseRule
         self.advance();
+
+        // we look up a prefix parser for the current token.
+        // The first token is always going to belong to some kind of prefix expression, by definition.
+        #[cfg(feature = "debug_trace_execution")]
+        println!("precedence {:?} ", precedence);
         let prefix_rule = self.get_rule(self.previous.token_type).prefix;
+        #[cfg(feature = "debug_trace_execution")]
+        println!("prefix_rule of {:?} ", self.previous.token_type);
         let can_assign = precedence <= Precedence::Assignment;
         match prefix_rule {
             Some(r) => r(self, can_assign),
@@ -551,11 +562,21 @@ impl<'src> Parser<'src> {
                 return;
             }
         }
+        // After parsing that, which may consume more tokens, the prefix expression is done.
 
+        // Now we look for an infix parser for the next token.
+        // If we find one, it means the prefix expression we already compiled might be an operand for it.
+        // But only if the call to `parsePrecedence()` has a precedence that is low enough to permit that infix operator.
         while precedence <= self.get_rule(self.current.token_type).precedence {
             self.advance();
+            // we consume the operator and hand off control to the infix parser we found.
+            // It consumes whatever other tokens it needs and returns back to `parsePrecedence()` (this function).
             let infix_rule = self.get_rule(self.previous.token_type).infix;
+            #[cfg(feature = "debug_trace_execution")]
+            println!("infix_rule of {:?} ", self.previous.token_type);
             match infix_rule {
+                // Then we loop back around and see if the next token is also a valid infix operator
+                // that can take the entire preceding expression as its operand.
                 Some(r) => r(self, can_assign),
                 None => {
                     self.error("Infix rule not found.");
@@ -563,6 +584,8 @@ impl<'src> Parser<'src> {
                 }
             }
         }
+        // If the next token is too low precedence, or isn’t an infix operator at all, we’re done.
+        // i.e., we’ve parsed as much expression as we can.
 
         if can_assign && self.equal(TokenType::Equal) {
             self.error("Invalid assignment target.");
@@ -649,7 +672,7 @@ impl<'src> Parser<'src> {
         self.emit_byte(OpCode::DefineGlobal(global));
     }
 
-    fn and(&mut self, can_assign: bool) {
+    fn rule_and(&mut self, can_assign: bool) {
         let end_jump = self.emit_jump(OpCode::JumpIfFalse(0xff));
 
         self.emit_byte(OpCode::Pop);

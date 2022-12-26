@@ -101,8 +101,9 @@ impl<'src> Scanner<'src> {
         }
     }
 
-    fn error_token(&self, msg: &'static str) -> Token<'src> {
-        // TODO: why need static lifetime?
+    fn error_token(&self, msg: &'src str) -> Token<'src> {
+        // 'static indicates that the data pointed to by the reference lives for the entire
+        // lifetime of the running program. It can still be coerced to a shorter lifetime.
         Token {
             token_type: TokenType::Error,
             // token.start = message;
