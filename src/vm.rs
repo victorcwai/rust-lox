@@ -13,16 +13,16 @@ const FRAMES_MAX: usize = 64;
 
 pub struct CallFrame {
     pub function: Function,
-    pub ip: usize,         // ip of the caller
-    pub slots: Vec<Value>, // local slots of this frame
+    pub ip: usize,          // ip of the caller (local frame index, not VM index)
+    pub slot_offset: usize, // offset of slots, i.e. starting position of this CallFrame's stack
 }
 
 impl CallFrame {
-    fn new(function: Function) -> Self {
+    fn new(function: Function, current_slot: usize) -> Self {
         CallFrame {
             function,
             ip: 0,
-            slots: Vec::with_capacity(USIZE_COUNT),
+            slot_offset: current_slot,
         }
     }
 }
@@ -57,7 +57,8 @@ impl VM {
         match parser.compile() {
             Some(function) => {
                 // TODO: self.stack.push(Value::) // push the function on the stack
-                self.frames.push(CallFrame::new(function));
+                self.frames
+                    .push(CallFrame::new(function, 0));
             }
             None => return Err(InterpretResult::CompileError),
         }
@@ -124,10 +125,12 @@ impl VM {
                     }
                 }
                 OpCode::GetLocal(idx) => {
-                    self.stack.push(frame.slots[idx as usize]);
+                    let idx = frame.slot_offset + idx as usize;
+                    self.stack.push(self.stack[idx]);
                 }
                 OpCode::SetLocal(idx) => {
-                    frame.slots[idx as usize] = *self.peek(0);
+                    let idx = frame.slot_offset + idx as usize;
+                    self.stack[idx] = *self.peek(0);
                 }
                 OpCode::Equal => {
                     let b = self.pop();
