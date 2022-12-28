@@ -81,14 +81,14 @@ mod tests {
     fn ch14_chunk() {
         let mut vm = VM::new();
         let res = vm.interpret("print 1.2;");
-        assert_eq!(res.err(), None);
+        assert_eq!(res.err(), None); // 1.2
     }
 
     #[test]
     fn ch15_vm() {
         let mut vm = VM::new();
         let res = vm.interpret("print - (1.2 + 3.4 / 5.6);");
-        assert_eq!(res.err(), None);
+        assert_eq!(res.err(), None); // -1.8071428571428572
     }
 
     #[test]
@@ -106,7 +106,7 @@ mod tests {
 
     #[test]
     fn ch21_global() {
-        let mut vm = VM::new();        
+        let mut vm = VM::new();
         let res = vm.interpret("print (1 * 2 = 3 + 4);");
         assert_eq!(res.err(), Some(crate::vm::InterpretResult::CompileError));
     }

@@ -78,11 +78,12 @@ impl<'src> Local<'src> {
 }
 
 enum FunctionType {
-    TypeFunction,
-    TypeScript,
+    TypeFunction, // function code
+    TypeScript,   // top-level code
 }
 
 pub struct Compiler<'src> {
+    // the compiler creates function objects during compilation. Then, at runtime, they are simply invoked
     pub function: Function,
     f_type: FunctionType,
 
@@ -366,8 +367,8 @@ impl<'src> Parser<'src> {
     // The jump OpCode at chunk.code[offset] will jump to the
     // current location (i.e. chunk.code[len-1])
     fn patch_jump(&mut self, offset: usize) {
-        // -1 to adjust for the bytecode (OpCode) for the jump offset itself.
-        let jump = self.compiler.function.chunk.code.len() - offset - 1;
+        // -1 because offset is 0-based index.
+        let jump = self.compiler.function.chunk.code.len() - 1 - offset;
 
         if jump > USIZE_COUNT {
             self.error("Too much code to jump over.");
@@ -782,12 +783,12 @@ impl<'src> Parser<'src> {
         self.consume(TokenType::RightParen, "Expect ')' after condition.");
 
         let then_jump = self.emit_jump(OpCode::JumpIfFalse(0xff));
-        self.emit_byte(OpCode::Pop); // pop the condition value
+        self.emit_byte(OpCode::Pop); // pop the condition value, each statement is required to have zero stack effect
         self.statement();
 
         let else_jump = self.emit_jump(OpCode::Jump(0xff));
         self.patch_jump(then_jump);
-        self.emit_byte(OpCode::Pop); // pop the condition value
+        self.emit_byte(OpCode::Pop); // pop the condition value, each statement is required to have zero stack effect
 
         if self.equal(TokenType::Else) {
             self.statement();
