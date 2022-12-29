@@ -110,4 +110,54 @@ mod tests {
         let res = vm.interpret("print (1 * 2 = 3 + 4);");
         assert_eq!(res.err(), Some(crate::vm::InterpretResult::CompileError));
     }
+
+    #[test]
+    fn ch24_calls() {
+        let mut vm = VM::new();
+        let res = vm.interpret(
+            "
+          fun areWeHavingItYet() {
+            print \"Yes we are!\";
+          }
+
+          fun areWeHavingItYeet() {
+            print \"No we aren't!\";
+          }
+          
+          areWeHavingItYet();
+          areWeHavingItYeet();
+          ",
+        );
+        assert_eq!(res.err(), None);
+    }
+
+    #[test]
+    fn ch24_calls2() {
+        let mut vm = VM::new();
+        let res = vm.interpret(
+            "
+            fun a() { b(); }
+            fun b() { c(); }
+            fun c() {
+              c(\"too\", \"many\");
+            }
+            
+            a();
+            ",
+        );
+        assert_eq!(res.err(), Some(crate::vm::InterpretResult::RuntimeError));
+    }
+
+    #[test]
+    fn ch24_calls3() {
+        let mut vm = VM::new();
+        let res = vm.interpret(
+            "
+            fun a(b,c) { print b; print c; }
+            
+            a(\"hello\", \"world\");
+            ",
+        );
+        assert_eq!(res.err(), None);
+    }
 }

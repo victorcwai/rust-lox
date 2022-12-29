@@ -18,6 +18,9 @@ Test with `cargo test -- --nocapture` (`--nocapture` means print statements will
 - No `Value::Obj` that can save arbitary object
 - String Object (`Value::StringObj(u32)`) is interned by `HashMap<String, u32>`
 - No printing for `Function` object
+- Pointer operations are replaced by index lookup
+- Following the same code structure of clox will mess up ownership in rust, so there are many tweaks about that (e.g. `compiler.enclosing`, mutable and immutable ref to `self.frame` in `vm.rs`, etc.)
+- Save `Function` to a list in VM, while the `Value` stores the index 
 
 <!-- # Running test suite #
 1. `git clone https://github.com/munificent/craftinginterpreters`

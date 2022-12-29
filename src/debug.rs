@@ -56,6 +56,7 @@ pub fn disassemble_instruction(chunk: &Chunk, offset: usize, interner: &Interner
         }
         OpCode::Loop(jump) => jump_instruction("OP_LOOP", chunk, offset, jump, false),
         OpCode::Return => simple_instruction("OP_RETURN", offset),
+        OpCode::Call(arg_count) => byte_instruction("OP_GET_LOCAL", offset, (*arg_count).into()),
         // _ => {
         //     println!("Unknown opcode {:?}\n", instruction);
         //     offset + 1

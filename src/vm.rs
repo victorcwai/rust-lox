@@ -11,16 +11,17 @@ use std::collections::HashMap;
 const STACK_SIZE: usize = FRAMES_MAX * USIZE_COUNT;
 const FRAMES_MAX: usize = 64;
 
+#[derive(Clone, Copy)]
 pub struct CallFrame {
-    pub function: Function,
+    pub f_idx: usize,
     pub ip: usize,          // ip of the caller (local frame index, not VM index)
     pub slot_offset: usize, // offset of slots, i.e. starting position of this CallFrame's stack
 }
 
 impl CallFrame {
-    fn new(function: Function, current_slot: usize) -> Self {
+    fn new(f_idx: usize, current_slot: usize) -> Self {
         CallFrame {
-            function,
+            f_idx,
             ip: 0,
             slot_offset: current_slot,
         }
@@ -32,6 +33,7 @@ pub struct VM {
     pub interner: Interner,
     pub stack: Vec<Value>,
     pub globals: HashMap<u32, Value>, // u32 is interner idx
+    pub functions: Vec<Function>,
 }
 
 #[derive(PartialEq, Debug)]
@@ -48,17 +50,20 @@ impl VM {
             interner: Interner::default(),
             stack: Vec::with_capacity(STACK_SIZE), // = reset stack
             globals: HashMap::with_capacity(STACK_SIZE),
+            functions: Vec::new(),
         }
     }
 
     pub fn interpret(&mut self, source: &str) -> Result<(), InterpretResult> {
-        let parser = Parser::new(source, &mut self.interner);
+        let parser = Parser::new(source, &mut self.interner, &mut self.functions);
 
         match parser.compile() {
             Some(function) => {
-                // TODO: self.stack.push(Value::) // push the function on the stack
-                self.frames
-                    .push(CallFrame::new(function, 0));
+                // push top-level script to the functions Vec
+                // at this point, the functions Vec is empty
+                self.functions.push(function);
+                let top_level_f_idx = self.functions.len() - 1;
+                self.frames.push(CallFrame::new(top_level_f_idx, 0));
             }
             None => return Err(InterpretResult::CompileError),
         }
@@ -72,12 +77,23 @@ impl VM {
         // wrap in Result, so that we can use the question mark operator to:
         // 1. *Return* InterpretResult if error
         // 2. Unpacks the Result ((), i.e. do nothing) if no error
-        let mut frame = self.frames.pop().unwrap(); // TODO: fix this
+
+        // let mut frame = self.frames.last_mut().unwrap();
+        // `frame` has to be mutable/owned, so in the below code when it tries to borrow the mutable
+        // it "cannot borrow `*self` as mutable more than once at a time second mutable borrow occurs"
+        // so instead of using a single reference `frame`, 
+        // we call a mutable/immutable reference to the last frame whenever we need it
+
+        // TODO: refactor self.frames.last().unwrap() and self.frames.last_mut().unwrap() into a single function
         loop {
-            let op = frame.function.chunk.code[frame.ip];
+            let op = self.functions[self.frames.last().unwrap().f_idx].chunk.code
+                [self.frames.last().unwrap().ip];
             match op {
                 OpCode::Constant(idx) => {
-                    let constant = frame.function.chunk.constants.values[idx as usize];
+                    let constant = self.functions[self.frames.last().unwrap().f_idx]
+                        .chunk
+                        .constants
+                        .values[idx as usize];
                     print_value(&constant, &self.interner);
                     self.stack.push(constant);
                     println!();
@@ -89,7 +105,10 @@ impl VM {
                     self.stack.pop();
                 }
                 OpCode::DefineGlobal(idx) => {
-                    let constant = frame.function.chunk.constants.values[idx as usize];
+                    let constant = self.functions[self.frames.last().unwrap().f_idx]
+                        .chunk
+                        .constants
+                        .values[idx as usize];
                     if let Value::Identifier(name) = constant {
                         self.globals.insert(name, *self.peek(0));
                         self.stack.pop(); //TODO: pop wat?
@@ -98,7 +117,10 @@ impl VM {
                     }
                 }
                 OpCode::GetGlobal(idx) => {
-                    let constant = frame.function.chunk.constants.values[idx as usize];
+                    let constant = self.functions[self.frames.last().unwrap().f_idx]
+                        .chunk
+                        .constants
+                        .values[idx as usize];
                     if let Value::Identifier(name) = constant {
                         if let Some(v) = self.globals.get(&name) {
                             self.stack.push(v.to_owned());
@@ -111,7 +133,10 @@ impl VM {
                     }
                 }
                 OpCode::SetGlobal(idx) => {
-                    let constant = frame.function.chunk.constants.values[idx as usize];
+                    let constant = self.functions[self.frames.last().unwrap().f_idx]
+                        .chunk
+                        .constants
+                        .values[idx as usize];
                     if let Value::Identifier(name) = constant {
                         if self.globals.contains_key(&name) {
                             self.globals.insert(name, *self.peek(0));
@@ -125,11 +150,11 @@ impl VM {
                     }
                 }
                 OpCode::GetLocal(idx) => {
-                    let idx = frame.slot_offset + idx as usize;
+                    let idx = self.frames.last().unwrap().slot_offset + idx as usize;
                     self.stack.push(self.stack[idx]);
                 }
                 OpCode::SetLocal(idx) => {
-                    let idx = frame.slot_offset + idx as usize;
+                    let idx = self.frames.last().unwrap().slot_offset + idx as usize;
                     self.stack[idx] = *self.peek(0);
                 }
                 OpCode::Equal => {
@@ -180,22 +205,46 @@ impl VM {
                     println!();
                 }
                 OpCode::Jump(offset) => {
-                    frame.ip += offset;
+                    self.frames.last_mut().unwrap().ip += offset;
                 }
                 OpCode::JumpIfFalse(offset) => {
                     if self.is_falsey(self.peek(0)) {
-                        frame.ip += offset;
+                        self.frames.last_mut().unwrap().ip += offset;
                     }
                 }
                 OpCode::Loop(offset) => {
-                    frame.ip -= offset + 1;
+                    self.frames.last_mut().unwrap().ip -= offset + 1;
                 }
                 OpCode::Return => {
-                    // Exit interpreter.
-                    return Ok(());
+                    // When a function returns a value, that value will be on top of the stack.
+                    // We’re about to discard the called function’s entire stack window,
+                    // so we pop that return value off and hang on to it.
+                    let ret_val = self.pop();
+                    // Then we discard the CallFrame for the current returning function.
+                    self.frames.pop();
+                    // If that was the very last CallFrame, it means we’ve finished executing the top-level code.
+                    // The entire program is done, so we pop the main script function from the stack and then exit the interpreter.
+                    if self.frames.is_empty() {
+                        self.stack.pop();
+                        return Ok(());
+                    }
+                    // Otherwise, we discard all of the slots the callee was using for its parameters and local variables.
+                    // Then we push the return value back onto the stack, where the caller can find it.
+                    self.stack.truncate(self.frames.last().unwrap().slot_offset); // TODO: check if correct
+                    self.stack.push(ret_val);
+                    // frame = *self.frames.last().unwrap(); // switch back to caller
+                    // no need, because we will always get the last frame in the next iteration, and we just popped the last one
+                }
+                OpCode::Call(arg_count) => {
+                    if !self.call_value(*self.peek(arg_count.into()), arg_count) {
+                        return Err(InterpretResult::RuntimeError);
+                    }
+                    // frame = *self.frames.last().unwrap(); // switch to new CallFrame
+                    // no need, because we will always get the last frame in the next iteration, and we just pushed the new one
+                    continue; // don't increment self.frames.last().unwrap().ip if this is a new call
                 }
             }
-            frame.ip += 1;
+            self.frames.last_mut().unwrap().ip += 1;
         }
     }
 
@@ -209,6 +258,34 @@ impl VM {
             .stack
             .get(self.stack.len() - 1 - distance)
             .expect("Failed to peek");
+    }
+
+    fn call(&mut self, f_idx: usize, arg_count: u8) -> bool {
+        if arg_count != self.functions[f_idx].arity {
+            let msg = format!(
+                "Expected {} arguments but got {}.",
+                self.functions[f_idx].arity, arg_count
+            );
+            self.runtime_error(&msg);
+            return false;
+        }
+        if self.frames.len() == FRAMES_MAX {
+            self.runtime_error("Stack overflow.");
+            return false;
+        }
+        let frame = CallFrame::new(f_idx, self.stack.len() - arg_count as usize - 1);
+        self.frames.push(frame);
+        true
+    }
+
+    fn call_value(&mut self, callee: Value, arg_count: u8) -> bool {
+        match callee {
+            Value::Function(f_idx) => self.call(f_idx, arg_count),
+            _ => {
+                self.runtime_error("Can only call functions and classes.");
+                false
+            }
+        }
     }
 
     fn is_falsey(&self, value: &Value) -> bool {
@@ -276,11 +353,19 @@ impl VM {
     // No variadic functions in rust
     fn runtime_error(&self, msg: &str) -> Result<(), InterpretResult> {
         eprintln!("{}", msg);
-        let frame = &self.frames.last().unwrap();
-        let instruction = frame.ip - 1;
-        let line = frame.function.chunk.lines[instruction];
-        eprintln!("[line {}] in script", line);
-        // resetStack(); // TODO: no need?
+
+        for frame in self.frames.iter().rev() {
+            let instruction = frame.ip - 1;
+            let line = self.functions[frame.f_idx].chunk.lines[instruction];
+            if self.functions[frame.f_idx].name.is_some() {
+                let name = self
+                    .interner
+                    .lookup(self.functions[frame.f_idx].name.unwrap());
+                eprintln!("[line {}] in {}()", line, name);
+            } else {
+                eprintln!("[line {}] in script", line);
+            }
+        }
         Err(InterpretResult::RuntimeError)
     }
 }

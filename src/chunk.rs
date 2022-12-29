@@ -29,6 +29,7 @@ pub enum OpCode {
     JumpIfFalse(usize),
     Loop(usize),
     Return,
+    Call(u8), // u8 = number of args
 }
 
 pub struct Chunk {

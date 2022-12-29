@@ -1,7 +1,7 @@
 use crate::{chunk::Chunk, interner::StringObjIdx};
 
 pub struct Function {
-    pub arity: u32, // # of parameters
+    pub arity: u8, // # of parameters
     pub chunk: Chunk,
     pub name: Option<StringObjIdx>,
 }

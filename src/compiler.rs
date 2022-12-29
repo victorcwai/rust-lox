@@ -5,14 +5,14 @@ use crate::{
     scanner::{Scanner, Token, TokenType},
     value::Value,
 };
-use std::{collections::HashMap, convert::TryFrom};
+use std::{collections::HashMap, convert::TryFrom, mem};
 
 pub const USIZE_COUNT: usize = u8::MAX as usize + 1;
 
 #[derive(Debug, PartialEq, PartialOrd)]
 enum Precedence {
     // "When derived on enums, variants are ordered by their top-to-bottom discriminant order."
-    // from lowest to highest
+    // from lowest to highest (e.g. Assignment < Call)
     None,
     Assignment, // =
     Or,         // or
@@ -77,13 +77,16 @@ impl<'src> Local<'src> {
     }
 }
 
-enum FunctionType {
+pub enum FunctionType {
     TypeFunction, // function code
     TypeScript,   // top-level code
 }
 
 pub struct Compiler<'src> {
-    // the compiler creates function objects during compilation. Then, at runtime, they are simply invoked
+    // linked list: https://rust-unofficial.github.io/too-many-lists/index.html
+    enclosing: Option<Box<Compiler<'src>>>,
+    // the compiler creates function objects during compilation (1 compiler = 1 function)
+    // Then, at runtime, they are simply invoked
     pub function: Function,
     f_type: FunctionType,
 
@@ -92,23 +95,27 @@ pub struct Compiler<'src> {
 }
 
 impl<'src> Compiler<'src> {
-    pub fn new() -> Compiler<'src> {
+    pub fn new(
+        enclosing: Option<Box<Compiler<'src>>>,
+        f_type: FunctionType,
+    ) -> Box<Compiler<'src>> {
         // Setstack slot zero for the VM’s own internal use
         let mut locals = Vec::with_capacity(USIZE_COUNT);
         let dummy_token = Local::new(Token::new(TokenType::Eof, 0, ""), 0);
         locals.push(dummy_token);
 
-        Compiler {
+        Box::new(Compiler {
+            enclosing,
             function: Function::new(),
-            f_type: FunctionType::TypeScript,
+            f_type: f_type,
             locals,
             scope_depth: 0,
-        }
+        })
     }
 }
 // Parse code to output OpCode to chunk
 pub struct Parser<'src> {
-    pub compiler: Compiler<'src>,
+    pub compiler: Box<Compiler<'src>>,
     interner: &'src mut Interner,
     current: Token<'src>,
     previous: Token<'src>,
@@ -116,14 +123,23 @@ pub struct Parser<'src> {
     rules: HashMap<TokenType, ParseRule<'src>>,
     had_error: bool,
     panic_mode: bool,
+    functions: &'src mut Vec<Function>,
 }
 
 impl<'src> Parser<'src> {
-    pub fn new(src: &'src str, interner: &'src mut Interner) -> Parser<'src> {
+    pub fn new(
+        src: &'src str,
+        interner: &'src mut Interner,
+        functions: &'src mut Vec<Function>,
+    ) -> Parser<'src> {
         let mut rule_map = HashMap::new();
         rule_map.insert(
             TokenType::LeftParen,
-            ParseRule::new(Some(Parser::rule_grouping), None, Precedence::None),
+            ParseRule::new(
+                Some(Parser::rule_grouping),
+                Some(Parser::rule_call),
+                Precedence::Call,
+            ),
         );
         rule_map.insert(
             TokenType::RightParen,
@@ -271,7 +287,7 @@ impl<'src> Parser<'src> {
         let dummy_token = Token::new(TokenType::Eof, 0, "");
         let dummy_token2 = Token::new(TokenType::Eof, 0, "");
         Parser {
-            compiler: Compiler::new(),
+            compiler: Compiler::new(None, FunctionType::TypeScript),
             interner,
             current: dummy_token,
             previous: dummy_token2,
@@ -279,6 +295,7 @@ impl<'src> Parser<'src> {
             rules: rule_map,
             had_error: false,
             panic_mode: false,
+            functions,
         }
     }
 
@@ -288,7 +305,10 @@ impl<'src> Parser<'src> {
             self.declaration();
         }
         let had_error = self.had_error;
-        let f = self.end_compiler();
+
+        // let f = self.end_compiler();
+        self.emit_return();
+        let f = self.compiler.function;
         if had_error {
             None
         } else {
@@ -361,6 +381,7 @@ impl<'src> Parser<'src> {
     }
 
     fn emit_return(&mut self) {
+        self.emit_byte(OpCode::Nil); // if a function does not returns, it will still always return nil
         self.emit_byte(OpCode::Return);
     }
 
@@ -400,25 +421,32 @@ impl<'src> Parser<'src> {
         self.emit_byte(OpCode::Constant(constant_idx));
     }
 
-    fn end_compiler(mut self) -> Function {
+    fn end_compiler(&mut self) -> Function {
         self.emit_return();
-        let f = self.compiler.function;
-        #[cfg(feature = "debug_trace_execution")]
-        if !self.had_error {
-            match f.name {
-                Some(name_idx) => {
-                    crate::debug::disassemble_chunk(
-                        &f.chunk,
-                        self.interner.lookup(name_idx),
-                        &self.interner,
-                    );
-                }
-                None => {
-                    crate::debug::disassemble_chunk(&f.chunk, "<script>", &self.interner);
+        if let Some(enclosing) = self.compiler.enclosing.take() {
+            let compiler = mem::replace(&mut self.compiler, enclosing);
+            let f = compiler.function;
+            #[cfg(feature = "debug_trace_execution")]
+            if !self.had_error {
+                match f.name {
+                    Some(name_idx) => {
+                        crate::debug::disassemble_chunk(
+                            &f.chunk,
+                            self.interner.lookup(name_idx),
+                            &self.interner,
+                        );
+                    }
+                    None => {
+                        crate::debug::disassemble_chunk(&f.chunk, "<script>", &self.interner);
+                    }
                 }
             }
+            f
+        } else {
+            // there should always be an enclosing compiler
+            // unless this compiler is top-level (which won't call this method)
+            panic!("No enclosing compiler!")
         }
-        f
     }
 
     fn begin_scope(&mut self) {
@@ -457,6 +485,11 @@ impl<'src> Parser<'src> {
             TokenType::Slash => self.emit_byte(OpCode::Divide),
             _ => {} // Unreachable.
         }
+    }
+
+    fn rule_call(&mut self, can_assign: bool) {
+        let arg_count = self.argument_list();
+        self.emit_byte(OpCode::Call(arg_count));
     }
 
     fn rule_literal(&mut self, can_assign: bool) {
@@ -661,6 +694,11 @@ impl<'src> Parser<'src> {
     }
 
     fn mark_initialized(&mut self) {
+        // if this is a top-level function,
+        // there is no local variable to mark initialized
+        if self.compiler.scope_depth == 0 {
+            return;
+        }
         let last = self.compiler.locals.last_mut().unwrap();
         last.depth = self.compiler.scope_depth;
     }
@@ -671,6 +709,25 @@ impl<'src> Parser<'src> {
             return;
         }
         self.emit_byte(OpCode::DefineGlobal(global));
+    }
+
+    fn argument_list(&mut self) -> u8 {
+        let mut arg_count = 0;
+        if !self.check(TokenType::RightParen) {
+            loop {
+                self.expression();
+                if arg_count == 255 {
+                    self.error("Cannot have more than 255 arguments.");
+                }
+                arg_count += 1;
+
+                if !self.equal(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightParen, "Expect ')' after arguments.");
+        arg_count
     }
 
     fn rule_and(&mut self, can_assign: bool) {
@@ -701,6 +758,50 @@ impl<'src> Parser<'src> {
         }
 
         self.consume(TokenType::RightBrace, "Expect '}' after block.");
+    }
+
+    fn function(&mut self, f_type: FunctionType) {
+        // new compiler for this function
+        let new_compiler = Compiler::new(None, f_type);
+        // swap the compiler with the new one
+        let old_compiler = mem::replace(&mut self.compiler, new_compiler);
+        self.compiler.enclosing = Some(old_compiler);
+        self.compiler.function.name = Some(self.interner.intern(self.previous.lexeme));
+
+        // beginScope() doesn’t have a corresponding endScope() call
+        // Because we end Compiler completely when we reach the end of the function body
+        self.begin_scope();
+
+        self.consume(TokenType::LeftParen, "Expect '(' after function name.");
+        if !self.check(TokenType::RightParen) {
+            loop {
+                self.compiler.function.arity += 1;
+                if self.compiler.function.arity > 255 {
+                    self.error_at_current("Can't have more than 255 parameters.");
+                }
+                let constant = self.parse_variable("Expect parameter name.");
+                self.define_variable(constant);
+                if !self.equal(TokenType::Comma) {
+                    break;
+                }
+            }
+        }
+        self.consume(TokenType::RightParen, "Expect ')' after parameters.");
+        self.consume(TokenType::LeftBrace, "Expect '{' before function body.");
+        self.block();
+
+        let function = self.end_compiler();
+        self.functions.push(function);
+        let f_idx = self.functions.len() - 1;
+        let constant_idx = self.make_constant(Value::Function(f_idx));
+        self.emit_byte(OpCode::Constant(constant_idx));
+    }
+
+    fn fun_declaration(&mut self) {
+        let global = self.parse_variable("Expect function name.");
+        self.mark_initialized(); // you’ll never see the variable in an uninitialized state
+        self.function(FunctionType::TypeFunction);
+        self.define_variable(global);
     }
 
     fn var_declaration(&mut self) {
@@ -842,7 +943,9 @@ impl<'src> Parser<'src> {
     }
 
     fn declaration(&mut self) {
-        if self.equal(TokenType::Var) {
+        if self.equal(TokenType::Fun) {
+            self.fun_declaration();
+        } else if self.equal(TokenType::Var) {
             self.var_declaration();
         } else {
             self.statement();
