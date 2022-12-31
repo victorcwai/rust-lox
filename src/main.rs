@@ -160,4 +160,17 @@ mod tests {
         );
         assert_eq!(res.err(), None);
     }
+
+    #[test]
+    fn ch24_calls4() {
+        let mut vm = VM::new();
+        let res = vm.interpret(
+            "
+            fun a(b,c) { return b+c; }
+            
+            print a(1,2);
+            ",
+        );
+        assert_eq!(res.err(), None);
+    }
 }

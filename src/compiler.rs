@@ -77,6 +77,7 @@ impl<'src> Local<'src> {
     }
 }
 
+#[derive(PartialEq)]
 pub enum FunctionType {
     TypeFunction, // function code
     TypeScript,   // top-level code
@@ -903,6 +904,22 @@ impl<'src> Parser<'src> {
         self.emit_byte(OpCode::Print);
     }
 
+    fn return_statement(&mut self) {
+        if self.compiler.f_type == FunctionType::TypeScript {
+            self.error("Can't return from top-level code.");
+        }
+        if self.equal(TokenType::Semicolon) { // i.e. return;
+            self.emit_return(); // return nil
+        } else { // i.e. return $value;
+            // if self.compiler.function.function_type == FunctionType::TypeInitializer {
+            //     self.error("Can't return a value from an initializer.");
+            // }
+            self.expression(); // compile the value to be returned
+            self.consume(TokenType::Semicolon, "Expect ';' after return value.");
+            self.emit_byte(OpCode::Return); 
+        }
+    }
+
     fn while_statement(&mut self) {
         let loop_start = self.compiler.function.chunk.code.len(); // start location of loop
         self.consume(TokenType::LeftParen, "Expect '(' after 'while'.");
@@ -963,6 +980,8 @@ impl<'src> Parser<'src> {
             self.for_statement();
         } else if self.equal(TokenType::If) {
             self.if_statement();
+        } else if self.equal(TokenType::Return) {
+            self.return_statement();
         } else if self.equal(TokenType::While) {
             self.while_statement();
         } else if self.equal(TokenType::LeftBrace) {

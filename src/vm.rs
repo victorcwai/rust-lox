@@ -81,7 +81,7 @@ impl VM {
         // let mut frame = self.frames.last_mut().unwrap();
         // `frame` has to be mutable/owned, so in the below code when it tries to borrow the mutable
         // it "cannot borrow `*self` as mutable more than once at a time second mutable borrow occurs"
-        // so instead of using a single reference `frame`, 
+        // so instead of using a single reference `frame`,
         // we call a mutable/immutable reference to the last frame whenever we need it
 
         // TODO: refactor self.frames.last().unwrap() and self.frames.last_mut().unwrap() into a single function
