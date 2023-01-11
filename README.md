@@ -22,6 +22,11 @@ Test with `cargo test -- --nocapture` (`--nocapture` means print statements will
 - Following the same code structure of clox will mess up ownership in rust, so there are many tweaks about that (e.g. `compiler.enclosing`, mutable and immutable ref to `self.frame` in `vm.rs`, etc.)
 - Save `Function` to a list in VM, while the `Value` stores the index 
 
+# TODO #
+- Garbage Collection
+- Classes and Instances
+- Optimization
+
 <!-- # Running test suite #
 1. `git clone https://github.com/munificent/craftinginterpreters`
 2. `cargo build`
